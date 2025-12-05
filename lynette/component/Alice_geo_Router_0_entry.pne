@@ -1,0 +1,1 @@
+{"table": "Alice_geo_Router_Forwarding_Geo_geoHostTable", "match": {"hdr.gbc.geoAreaPosLat": ["192.168.5.1"]}, "action_name": "Alice_geo_Router_Forwarding_Geo_geoHostTable_action", "action_params": {"value_0": ["_Next"]}}

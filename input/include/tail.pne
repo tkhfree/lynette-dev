@@ -1,0 +1,43 @@
+module PortRetrieve(in next_hop_t next_hop) {
+    parser {hdr.ethernet;}
+    control {
+        map< next_hop, <port_id_t, mac_addr_t> >  l3PortRetrieveTable;
+        map< next_hop, port_id_t >  l2PortRetrieveTable;
+
+        switch (next_hop) {
+            l3PortRetrieveTable : pkt.out_port, hdr.ethernet.dmac = l3portRetrieveTable[next_hop];
+            l2PortRetrieveTable : pkt.out_port = l2PortRetrieveTable[next_hop];
+            default : drop();
+        }
+    }
+}
+
+
+module VlanHandling(in next_hop_t next_hop) {
+    parser {hdr.vlan_tag;}
+    control {
+        map < next_hop, vlan_id_t > vlanUpdateTable;
+        gmeta.vlan_id = vlanUpdateTable[next_hop];
+
+        set< pkt.out_port, gmeta.vlan_id > egressVlanTable_push_vlan, egressVlanTable_pop_vlan;
+
+        func push_vlan() {
+            hdr.vlan_tag.setValid();
+            // addHeader(hdr.vlan_tag);
+            hdr.vlan_tag.eth_type = ETHERTYPE_VLAN;
+            hdr.vlan_tag.vlan_id = gmeta.vlan_id;
+        }
+        func pop_vlan() {
+            hdr.vlan_tag.setInvalid();
+            // removeHeader(hdr.vlan_tag);
+        }
+
+        switch (pkt.out_port, gmeta.vlan_id) {
+            egressVlanTable_push_vlan:   push_vlan();
+            egressVlanTable_pop_vlan:    pop_vlan();
+            default:                     nop();
+        }
+    }
+
+
+}

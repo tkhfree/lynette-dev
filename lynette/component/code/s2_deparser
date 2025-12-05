@@ -1,0 +1,6 @@
+    apply{ 
+        pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.eth_type);
+        pkt.emit(hdr.geo);
+        pkt.emit(hdr.gbc);
+    } 

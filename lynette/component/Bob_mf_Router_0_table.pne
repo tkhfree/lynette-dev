@@ -1,0 +1,10 @@
+table Bob_mf_Router_Forwarding_Mf_mfHostTable{
+    key = {
+        hdr.mf.dest_guid : exact;
+    }
+    actions = {
+        Bob_mf_Router_Forwarding_Mf_mfHostTable_action;
+        Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1;
+    }
+    default_action = Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1();
+}

@@ -1,0 +1,65 @@
+
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action(bit<9> value_0)
+{
+    LynettePKT.LynetteOutPort = value_0;
+}
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1()
+{
+    LynetteDrop;
+}
+action Bob_mf_Router_Forwarding_Mf_mfHostTable_action(bit<9> value_0)
+{
+    LynettePKT.LynetteOutPort = value_0;
+}
+action Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1()
+{
+    LynetteDrop;
+}
+
+table Alice_geo_Router_Forwarding_Geo_geoHostTable{
+    key = {
+        hdr.gbc.geoAreaPosLat : exact;
+    }
+    actions = {
+        Alice_geo_Router_Forwarding_Geo_geoHostTable_action;
+        Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1;
+    }
+    default_action = Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1();
+}
+table Bob_mf_Router_Forwarding_Mf_mfHostTable{
+    key = {
+        hdr.mf.dest_guid : exact;
+    }
+    actions = {
+        Bob_mf_Router_Forwarding_Mf_mfHostTable_action;
+        Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1;
+    }
+    default_action = Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1();
+}
+
+
+apply {
+
+    /*******************************************/
+
+    if(hdr.geo.isValid())
+    {
+        Alice_geo_Router_Forwarding_Geo_geoHostTable.apply();
+    }
+
+    /*******************************************/
+
+
+    /*******************************************/
+
+    if(hdr.mf.isValid())
+    {
+        Bob_mf_Router_Forwarding_Mf_mfHostTable.apply();
+    }
+
+    /*******************************************/
+
+
+    /*******************************************/
+
+}

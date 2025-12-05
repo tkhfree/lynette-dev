@@ -1,0 +1,29 @@
+module Geo(){
+    parser {hdr.geo;}
+    control {
+        map< bit<32>, bit<9> >[1024] geoHostTable
+            {
+                (192.168.5.1,_Next);
+            };
+        
+        if ( hdr.gbc.geoAreaPosLat in geoHostTable ) {
+            pkt.out_port = geoHostTable[hdr.gbc.geoAreaPosLat];
+        } else {
+            drop();
+        }
+    }
+}
+
+
+module Mf(){
+    parser {hdr.Mf;}
+    control {
+        map< bit<32>, bit<9> >[1024] mfHostTable;
+        
+        if ( hdr.mf.dest_guid in mfHostTable ) {
+            pkt.out_port = mfHostTable[hdr.mf.dest_guid];
+        } else {
+            drop();
+        }
+    }
+}

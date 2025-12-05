@@ -1,0 +1,8 @@
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action(bit<9> value_0)
+{
+    LynettePKT.LynetteOutPort = value_0;
+}
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1()
+{
+    LynetteDrop;
+}

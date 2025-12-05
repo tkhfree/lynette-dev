@@ -1,0 +1,25 @@
+module IPv4() {
+    parser {hdr.ipv4;}
+    control {
+        map<ipv4_addr_t, bit<9>>[1024] ipv4HostTable;
+        
+        if ( hdr.ipv4.dst_addr in ipv4HostTable ) {
+            pkt.out_port = ipv4HostTable[hdr.ipv4.dst_addr];
+        } else {
+            drop();
+        }
+    }
+}
+
+module IPv6() {
+    parser {hdr.ipv6;}
+    control {
+        map<ipv6_addr_t, bit<9>>[1024] ipv6HostTable;
+        
+        if ( hdr.ipv6.dst_addr in ipv6HostTable ) {
+            pkt.out_port = ipv6HostTable[hdr.ipv6.dst_addr];
+        } else {
+            drop();
+        }
+    }
+}

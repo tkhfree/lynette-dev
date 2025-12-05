@@ -1,0 +1,20 @@
+header ethernet_t {
+    bit<48> dmac;
+    bit<48> smac;
+}
+header eth_type_t {
+    bit<16> value;
+}
+header mf_guid_t {
+    bit<32> mf_type;
+    bit<32> src_guid;
+    bit<32> dest_guid;
+}
+
+struct header_t {
+    ethernet_t ethernet;
+    eth_type_t eth_type;
+    mf_guid_t mf;
+}
+struct global_metadata_t {
+}

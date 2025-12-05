@@ -1,0 +1,25 @@
+#include <qin.pne>
+#include <mf.domain>
+
+#include >-<module_lib/forwarding.pne>-<
+
+module Forwarding()  {
+    parser { hdr.ethernet; hdr.eth_type; }
+
+    control {
+        if ( hdr.mf.isValid() ) {
+            Mf.apply();
+        }
+    }
+}
+
+module UserModule() {
+    control {
+    }
+}
+
+
+application Router using Parser {
+    Forwarding.apply();
+    UserModule.apply();
+}

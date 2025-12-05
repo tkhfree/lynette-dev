@@ -1,0 +1,8 @@
+action Bob_mf_Router_Forwarding_Mf_mfHostTable_action(bit<9> value_0)
+{
+    LynettePKT.LynetteOutPort = value_0;
+}
+action Bob_mf_Router_Forwarding_Mf_mfHostTable_action_1()
+{
+    LynetteDrop;
+}

@@ -1,0 +1,18 @@
+    state start {
+        transition parse_ethernet;
+    }
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition parse_eth_type;
+    }
+    state parse_eth_type {
+        pkt.extract(hdr.eth_type);
+        transition select(hdr.eth_type.value) {
+            0x27C0: parse_mf;
+            default: accept;
+        }
+    }
+    state parse_mf {
+        pkt.extract(hdr.mf);
+        transition accept;
+    }

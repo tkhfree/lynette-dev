@@ -1,0 +1,13 @@
+module Filtering(out bool o_skip_forwarding) {
+    parser { hdr.vlan_tag; }
+
+    control {
+        set<port_id_t, vlan_id_t> ingressVlanTable;
+
+        if ( pkt.in_port, gmeta.vlan_id in ingressVlanTable ) {
+            o_skip_forwarding = _FALSE;
+        } else {
+            o_skip_forwarding = _TRUE;
+        }
+    }
+}

@@ -1,0 +1,29 @@
+#include <qin.pne>
+#include <ip.domain>
+
+module Forwarding()  {
+    parser { hdr.ethernet; hdr.eth_type; hdr.ipv4; }
+
+    control {
+        assert(hdr.ipv4.isValid());
+        
+        map<ipv4_addr_t, bit<9>>[1024] ipv4HostTable;
+        
+        if ( hdr.ipv4.dst_addr in ipv4HostTable ) {
+            pkt.out_port = ipv4HostTable[hdr.ipv4.dst_addr];
+        } else {
+            drop();
+        }
+    }
+}
+
+module UserModule() {
+    control {
+    }
+}
+
+
+application Router using IPParser {
+    Forwarding.apply();
+    UserModule.apply();
+}

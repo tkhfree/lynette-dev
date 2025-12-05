@@ -1,0 +1,197 @@
+parser NdnParser (pkt_t pkt,
+                out header_t hdr,
+                inout global_metadata_t gmeta) {
+
+    state parse_big_name {
+        pkt.extract(hdr.big_name);
+        transition parse_name;
+    }
+    state parse_big_tlv0 {
+        pkt.extract(hdr.big_tlv0);
+        transition parse_tlv0;
+    }
+    state parse_component1 {
+        //gmeta.name_metadata.tmp = (pkt.lookahead<bit<16>>())[7:0];
+        //tmp_hdr = (pkt.lookahead<bit<16>>())[15:8];
+        //pkt.extract(hdr.component1, (bit<32>)(((bit<32>)gmeta.name_metadata.tmp + 32w2) * 8 - 16));
+        gmeta.name_metadata.namesize = 2;
+        transition select(gmeta.name_metadata.namesize) {
+            8w0: parse_default;
+            default: parse_component2;
+        }
+    }
+    state parse_component2 {
+        //gmeta.name_metadata.tmp = (pkt.lookahead<bit<16>>())[7:0];
+        //tmp_hdr = (pkt.lookahead<bit<16>>())[15:8];
+        pkt.extract(hdr.component2);
+        gmeta.name_metadata.namesize = 2;
+        transition select(gmeta.name_metadata.namesize) {
+            8w0: parse_default;
+            default: parse_component3;
+        }
+    }
+    state parse_component3 {
+        //gmeta.name_metadata.tmp = (pkt.lookahead<bit<16>>())[7:0];
+        //tmp_hdr = (pkt.lookahead<bit<16>>())[15:8];
+        pkt.extract(hdr.component3);
+         gmeta.name_metadata.namesize = 2;
+        transition select(gmeta.name_metadata.namesize) {
+            8w0: parse_default;
+            default: parse_component4;
+        }
+    }
+    state parse_component4 {
+        //gmeta.name_metadata.tmp = (pkt.lookahead<bit<16>>())[7:0];
+        //tmp_hdr = (pkt.lookahead<bit<16>>())[15:8];
+        pkt.extract(hdr.component4);
+         gmeta.name_metadata.namesize = 2;
+        transition select(gmeta.name_metadata.namesize) {
+            8w0: parse_default;
+            default: parse_component5;
+        }
+    }
+    state parse_component5 {
+        //gmeta.name_metadata.tmp = (pkt.lookahead<bit<16>>())[7:0];
+        //tmp_hdr = (pkt.lookahead<bit<16>>())[15:8];
+        pkt.extract(hdr.component5);
+         gmeta.name_metadata.namesize = 2;
+        transition select(gmeta.name_metadata.namesize) {
+            default: parse_default;
+        }
+    }
+    state parse_default {
+        transition accept;
+    }
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition select(hdr.ethernet.etherType) {
+            20 : parse_ndn_lp;
+            10 : parse_ndn;
+            default: accept;
+        }
+    }
+    state parse_huge_name {
+        pkt.extract(hdr.huge_name);
+        transition parse_name;
+    }
+    state parse_huge_tlv0 {
+        pkt.extract(hdr.huge_tlv0);
+        transition parse_tlv0;
+    }
+    state parse_medium_name {
+        pkt.extract(hdr.medium_name);
+        transition parse_name;
+    }
+    state parse_medium_ndnlp {
+        pkt.extract(hdr.medium_ndnlpdata);
+        transition parse_ndnlp_sequence;
+    }
+    state parse_medium_ndnlppayload {
+        pkt.extract(hdr.medium_ndnlppayload);
+        transition select(hdr.medium_ndnlppayload.tl_code) {
+            2: parse_ndn;
+            3: parse_ndn;
+            default: parse_default;
+        }
+    }
+    state parse_medium_tlv0 {
+        pkt.extract(hdr.medium_tlv0);
+        gmeta.flow_metadata.pktType = hdr.medium_tlv0.tl_code;
+        transition parse_tlv0;
+    }
+    state parse_name {
+        transition select(hdr.medium_tlv0.tl_code) {
+            8w0x8: parse_component1;
+            default: parse_default;
+        }
+    }
+    state parse_ndn {
+        transition select(hdr.medium_tlv0.tl_code) {
+            1: parse_medium_tlv0;
+            2: parse_big_tlv0;
+            3: parse_huge_tlv0;
+            default: parse_small_tlv0;
+        }
+    }
+    state parse_ndn_lp {
+        transition select(hdr.medium_tlv0.tl_code) {
+            1: parse_medium_ndnlp;
+            default: parse_small_ndnlp;
+        }
+    }
+    state parse_ndnlp_fragcount {
+        pkt.extract(hdr.ndnlpfragcount);
+        gmeta.section_metadata.Count = hdr.ndnlpfragcount.tl_value;
+        transition select(hdr.medium_tlv0.tl_code) {
+            1: parse_medium_ndnlppayload;
+            default: parse_small_ndnlppayload;
+        }
+    }
+    state parse_ndnlp_fragindex {
+        pkt.extract(hdr.ndnlpfragindex);
+        gmeta.section_metadata.Index = hdr.ndnlpfragindex.tl_value;
+        transition parse_ndnlp_fragcount;
+    }
+    state parse_ndnlp_payload {
+        transition select(hdr.medium_tlv0.tl_code) {
+            1: parse_medium_ndnlppayload;
+            default: parse_small_ndnlppayload;
+        }
+    }
+    state parse_ndnlp_sequence {
+        pkt.extract(hdr.ndnlpsequence);
+        transition select(hdr.medium_tlv0.tl_code) {
+           2: parse_ndnlp_fragindex;
+           3: parse_ndnlp_payload;
+        }
+    }
+    state parse_small_name {
+        gmeta.name_metadata.namesize = 8;
+        pkt.extract(hdr.small_name);
+        transition parse_name;
+    }
+    state parse_small_ndnlp {
+        pkt.extract(hdr.small_ndnlpdata);
+        transition parse_ndnlp_sequence;
+    }
+    state parse_small_ndnlppayload {
+        pkt.extract(hdr.small_ndnlppayload);
+        transition select(hdr.medium_tlv0.tl_code) {
+            5: parse_ndn;
+            6: parse_ndn;
+            default: parse_default;
+        }
+    }
+    state parse_small_tlv0 {
+        pkt.extract(hdr.small_tlv0);
+        gmeta.flow_metadata.pktType = hdr.small_tlv0.tl_code;
+        transition parse_tlv0;
+    }
+    state parse_tlv0 {
+        transition select(hdr.medium_tlv0.tl_code) {
+            7: size_name;
+            default: parse_default;
+        }
+    }
+   state size_name {
+        transition select(hdr.medium_tlv0.tl_code) {
+            2: parse_medium_name;
+            3: parse_big_name;
+            4: parse_huge_name;
+            default: parse_small_name;
+        }
+    }
+    state start {
+        transition parse_ethernet;
+    }
+
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition accept;
+    }
+
+    deparser NdnDeparser {
+        pkt.emit(hdr.ethernet);
+
+    }
+}

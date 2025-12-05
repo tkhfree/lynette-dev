@@ -1,0 +1,82 @@
+header ethernet_t {
+    mac_addr_t dmac;
+    mac_addr_t smac;
+}
+
+header eth_type_t {
+    bit<16> value;
+}
+
+header geo_t{
+    bit<4>  version;
+    bit<4>  nh_basic;
+    bit<8>  reserved_basic;
+    bit<8>  lt;
+    bit<8>  rhl;
+    bit<4> nh_common;
+    bit<4> reserved_common_a;
+    bit<4> ht;
+    bit<4> hst;
+    bit<8> tc;
+    bit<8> flag;
+    bit<16> pl;
+    bit<8> mhl;
+    bit<8> reserved_common_b;
+}
+
+header gbc_t{
+    bit<16> sn;
+    bit<16> reserved_gbc_a;
+    bit<64> gnaddr;
+    bit<32> tst;
+    bit<32> lat;
+    bit<32> longg;
+    bit<1> pai;
+    bit<15> s;
+    bit<16> h;
+    bit<32> geoAreaPosLat; 
+    bit<32> geoAreaPosLon; 
+    bit<16> disa;
+    bit<16> disb;
+    bit<16> angle;
+    bit<16> reserved_gbc_b; 
+}
+
+header btp_t{
+    bit<16> dstport;
+    bit<16> dstportinfo;
+}
+
+header its_t{
+    bit<8> protoversion;
+    bit<8> messid;
+    bit<32> stationid;
+}
+
+header beacon_t{
+    bit<64> gnaddr;
+    bit<32> tst;
+    bit<32> lat;
+    bit<32> longg;
+    bit<1> pai;
+    bit<15> s;
+    bit<16> h;
+}
+
+header mf_guid_t{
+    bit<32> mf_type;
+    bit<32> src_guid;
+    bit<32> dest_guid;
+}
+
+
+struct header_t {
+    ethernet_t    ethernet;
+    eth_type_t    eth_type;
+    geo_t         geo;
+    gbc_t         gbc;
+    mf_guid_t     mf;
+}
+
+struct global_metadata_t {
+}

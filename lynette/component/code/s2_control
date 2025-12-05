@@ -1,0 +1,37 @@
+
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action(bit<9> value_0)
+{
+    LynettePKT.LynetteOutPort = value_0;
+}
+action Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1()
+{
+    LynetteDrop;
+}
+
+table Alice_geo_Router_Forwarding_Geo_geoHostTable{
+    key = {
+        hdr.gbc.geoAreaPosLat : exact;
+    }
+    actions = {
+        Alice_geo_Router_Forwarding_Geo_geoHostTable_action;
+        Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1;
+    }
+    default_action = Alice_geo_Router_Forwarding_Geo_geoHostTable_action_1();
+}
+
+
+apply {
+
+    /*******************************************/
+
+    if(hdr.geo.isValid())
+    {
+        Alice_geo_Router_Forwarding_Geo_geoHostTable.apply();
+    }
+
+    /*******************************************/
+
+
+    /*******************************************/
+
+}

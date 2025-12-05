@@ -1,0 +1,46 @@
+parser Parser (packet_t pkt,
+                out header_t hdr,
+                inout global_metadata_t gmeta) {
+    state start {
+        transition parse_ethernet;
+    }
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition parse_eth_type;
+    }
+    state parse_eth_type {
+        pkt.extract(hdr.eth_type);
+        transition select(hdr.eth_type.value) {
+            ETHERTYPE_GEO: parse_geo;
+            ETHERTYPE_MF: parse_mf;
+            default: accept;
+        }
+    }
+
+    state parse_geo{
+        pkt.extract(hdr.geo);
+        transition select(hdr.geo.ht) { 
+            ETHERTYPE_geo_gbc: parse_gbc;
+            default: accept;
+        }
+    }
+
+    state parse_gbc{
+        pkt.extract(hdr.gbc);
+        transition accept;
+    }
+
+    state parse_mf{
+        pkt.extract(hdr.mf);
+        transition accept;
+    }
+
+    deparser Deparser {
+        pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.eth_type);
+        pkt.emit(hdr.geo);
+        pkt.emit(hdr.gbc);
+        pkt.emit(hdr.mf);
+    }
+}
+

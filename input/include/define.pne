@@ -1,0 +1,11 @@
+typedef bit<9> port_num_t;
+typedef bit<48> mac_addr_t;
+
+
+const bit<16> ETHERTYPE_GEO = 0x8947;
+const bit<4> ETHERTYPE_geo_beacon = 0x0001;
+const bit<4> ETHERTYPE_geo_gbc = 0x0004;
+const bit<4> ETHERTYPE_geo_tsb = 0x0005;
+
+
+const bit<16> ETHERTYPE_MF = 0x27C0;

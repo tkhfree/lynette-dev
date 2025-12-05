@@ -1,0 +1,25 @@
+    state start {
+        transition parse_ethernet;
+    }
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition parse_eth_type;
+    }
+    state parse_eth_type {
+        pkt.extract(hdr.eth_type);
+        transition select(hdr.eth_type.value) {
+            0x8947: parse_geo;
+            default: accept;
+        }
+    }
+    state parse_geo {
+        pkt.extract(hdr.geo);
+        transition select(hdr.geo.ht) {
+            0x0004: parse_gbc;
+            default: accept;
+        }
+    }
+    state parse_gbc {
+        pkt.extract(hdr.gbc);
+        transition accept;
+    }

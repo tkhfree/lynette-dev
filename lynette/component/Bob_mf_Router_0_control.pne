@@ -1,0 +1,4 @@
+if(hdr.mf.isValid())
+{
+    Bob_mf_Router_Forwarding_Mf_mfHostTable.apply();
+}

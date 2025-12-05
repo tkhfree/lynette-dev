@@ -1,0 +1,22 @@
+control LynetteEgress(
+    inout header_t                          hdr,
+    inout global_metadata_t                         gmeta,
+    inout standard_metadata_t standard_metadata)
+{
+    apply {
+    }
+}
+
+control LynetteComputeChecksum(inout header_t  hdr, inout global_metadata_t gmeta) {
+        apply {
+    }
+}
+
+V1Switch(
+    LynetteParser(),
+    LynetteVerifyChecksum(),
+    LynetteIngress(),
+    LynetteEgress(),
+    LynetteComputeChecksum(),
+    LynetteDeparser()
+)main;
