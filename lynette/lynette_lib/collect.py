@@ -1,3 +1,73 @@
+"""collect.py - 语法树收集模块
+
+功能说明：
+    将 Lark 语法树（Tree）转换为内部数据结构（data_structure），
+    这是编译流程的第二阶段：源代码 → 语法树 → [collect] → 数据结构 → P4代码
+
+模块结构：
+    1. 指令收集函数：收集各种指令类型
+       - collect_ins_assign()    : 赋值指令（a = b）
+       - collect_ins_cul()       : 计算指令（a = b + c）
+       - collect_ins_call()      : 调用指令
+       - collect_func_call()     : 函数调用
+       - collect_primitive()     : 原语操作（drop, return, addheader等）
+    
+    2. 控制流收集函数：收集控制结构
+       - collect_if()            : if-else条件分支
+       - collect_switch()        : switch语句
+       - collect_condition()     : 条件表达式（比较、isvalid、check）
+       - collect_assert()        : 断言语句
+    
+    3. 代码块收集函数：
+       - collect_code_body()     : 代码块（指令序列）
+    
+    4. 顶层组件收集函数：
+       - collect_service()       : 服务定义
+       - collect_app()           : 应用定义
+       - collect_module()        : 模块定义
+    
+    5. 主入口函数：
+       - execute()               : 遍历语法森林，调度所有收集函数
+
+Application 组件结构：
+    collect_app() 处理的子组件：
+    ├─ define
+    │  └─ ins_define_var        : 变量定义
+    ├─ ins_assign               : 赋值指令 → collect_ins_assign()
+    ├─ ins_call                 : 调用指令 → collect_ins_call()
+    ├─ if                       : 条件语句 → collect_if()
+    └─ primitive                : 原语操作 → collect_primitive()
+
+Module 组件结构：
+    collect_module() 处理的子组件：
+    ├─ module_name              : 模块名称
+    ├─ module_pars              : 模块参数
+    ├─ module_parser            : 模块parser（跳过）
+    ├─ parser                   : parser定义（跳过）
+    └─ control                  : control块
+       ├─ assert                : 断言 → collect_assert()
+       ├─ define                : 定义块
+       │  ├─ tuple              : 元组定义
+       │  ├─ set                : 集合定义
+       │  ├─ map                : 映射定义
+       │  ├─ func               : 函数定义 → collect_code_body()
+       │  ├─ ins_define_var     : 变量定义
+       │  └─ reg                : 寄存器定义
+       ├─ switch                : switch语句 → collect_switch()
+       ├─ if                    : 条件语句 → collect_if()
+       ├─ ins_assign            : 赋值指令 → collect_ins_assign()
+       ├─ ins_call              : 调用指令 → collect_ins_call()
+       ├─ ins_cul               : 计算指令 → collect_ins_cul()
+       ├─ primitive             : 原语操作 → collect_primitive()
+       ├─ annotation            : 注解（跳过）
+       └─ ins_null              : 空指令（跳过）
+
+注意事项：
+    - 所有 collect_xxx 函数遵循相同模式：输入Tree → 提取数据 → 输出data_structure对象
+    - Module 比 Application 支持更多的特性（如 assert、switch、func、reg等）
+    - 遇到未识别的节点类型时，程序会打印错误信息并退出
+"""
+
 from lark import Lark, Tree, Token
 from lynette_lib import data_structure
 

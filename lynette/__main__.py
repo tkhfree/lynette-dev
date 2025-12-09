@@ -9,6 +9,7 @@ from lynette_lib import aggregate
 from lynette_lib import output
 from lynette_lib import data_structure
 from lynette_lib.clean import sh
+from lynette_lib.path_generator import generate_path_json
 
 class LynetteRunner():
     """Lynette编译器主运行类，负责协调整个编译流程。
@@ -180,12 +181,12 @@ class LynetteRunner():
         """在debug模式下生成服务配置模板。
         
         该方法会解析debug模式下的PNE文件，提取应用信息，并自动生成service.json和path.json模板文件。
+        如果存在 topology.json，则自动生成准确的路径配置；否则生成模板。
         
         Args:
             debug_main_name (str): 主PNE文件的名称（不含_main.pne后缀），用于生成服务配置的键名
         """  
         self.service_json = {debug_main_name:{"services":[]}}
-        path = {}
         service_name_id = 1
         parser_tree_paremeter = {}
         parser_tree_paremeter["main_file_name"] = self.debug_main
@@ -196,15 +197,66 @@ class LynetteRunner():
 
         _, applications, _ = collect.execute(forest, self.input_path)
         for i in applications:
-            self.service_json[debug_main_name]["services"].append({"service_name":"admin_" + str(service_name_id), "applications":[i]})
-            path["admin_" + str(service_name_id)] = {"node1" :{"next": {"node2":12},"tables":6, "ip":"192.168.0.1"}}
+            self.service_json[debug_main_name]["services"].append({
+                "service_name":"admin_" + str(service_name_id), 
+                "applications":[i],
+                "service_hosts": [
+                    {"device_uuid": "s1", "ports": {"h1": 21}},
+                    {"device_uuid": "s2", "ports": {"h2": 22}}
+                ]
+            })
             service_name_id = service_name_id + 1
-        with open("service.json","w") as f:
-            json.dump(self.service_json, f)
+        
+        # 保存 service.json
+        service_json_path = "service.json"
+        with open(service_json_path, "w", encoding='utf-8') as f:
+            json.dump(self.service_json, f, indent=4, ensure_ascii=False)
+        print(f"\n✅ Generated: {service_json_path}")
+        
+        # 检查是否存在 topology.json，如果存在则自动生成 path.json
+        topology_json_path = self.input_path + "//topology.json"
+        if os.path.exists(topology_json_path):
+            print("\n🔍 Found topology.json, auto-generating path.json...")
+            try:
+                path_output = "path//path.json"
+                generate_path_json(service_json_path, topology_json_path, path_output)
+            except Exception as e:
+                print(f"⚠️  Auto-generation failed: {e}")
+                print("📝 Falling back to template generation...")
+                self._generate_path_template(service_name_id)
+        else:
+            print("\n⚠️  topology.json not found, generating path.json template...")
+            print("📝 Please edit 'path/path.json' with actual network configuration")
+            self._generate_path_template(service_name_id)
+    
+    def _generate_path_template(self, service_count):
+        """生成 path.json 模板（当 topology.json 不存在时使用）
+        
+        Args:
+            service_count: 服务数量，用于生成对应数量的服务配置
+        """
+        path = {}
+        for i in range(1, service_count):
+            path["admin_" + str(i)] = {
+                "node1": {
+                    "next": {"node2": 12},
+                    "tables": 6, 
+                    "ip": "192.168.0.1"
+                }
+            }
+        
         if not os.path.exists("path"):
             os.makedirs("path")
-        with open("path//path.json","w") as f:
-            json.dump(path, f)
+        
+        with open("path//path.json", "w", encoding='utf-8') as f:
+            json.dump(path, f, indent=4, ensure_ascii=False)
+        
+        print("⚠️  Generated template path.json with placeholder values!")
+        print("📝 Please edit 'path/path.json' with actual:")
+        print("   - Node names (e.g., s1, s2 instead of node1, node2)")
+        print("   - IP addresses of your devices")
+        print("   - Correct port numbers")
+        print("   - Table resource limits")
 
     def compile_p4(self):
         """编译P4文件（debug模式）。
