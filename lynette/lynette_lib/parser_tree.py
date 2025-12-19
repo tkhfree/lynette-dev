@@ -1,5 +1,5 @@
 from lark import Lark
-from lynette_lib.grammar.grammar import grammar
+from lynette.lynette_lib.grammar.grammar import grammar
 
 #执行一下文件的符号替换, " -> >-<
 def change_1(file):

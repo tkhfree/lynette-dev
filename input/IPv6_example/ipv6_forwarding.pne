@@ -1,0 +1,307 @@
+// ============================================================
+// IPv6 转发模块
+// 实现 IPv6 路由和转发功能
+// 基于 RFC 8200
+// ============================================================
+
+#include "include/ipv6_headers.pne"
+
+// ============================================================
+// 模块 1: IPv6Parser - 解析 IPv6 数据包
+// ============================================================
+module IPv6Parser() {
+    parser {
+        hdr.ethernet;
+        
+        if (hdr.ethernet.etherType == ETHERTYPE_IPV6) {
+            hdr.ipv6;
+            
+            // 解析扩展头部和传输层
+            if (hdr.ipv6.nextHeader == IPV6_NEXT_HOP_BY_HOP) {
+                hdr.ipv6_hop_by_hop;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_ROUTING) {
+                hdr.ipv6_routing;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_ICMPV6) {
+                hdr.icmpv6;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_TCP) {
+                hdr.tcp;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_UDP) {
+                hdr.udp;
+            }
+        }
+    }
+    
+    control {
+        meta.ipv6_metadata.is_ipv6 = 0;
+        meta.ipv6_metadata.routing_hit = 0;
+        meta.ipv6_metadata.need_nd = 0;
+        meta.ipv6_metadata.is_multicast = 0;
+        
+        if (hdr.ethernet.etherType == ETHERTYPE_IPV6 && hdr.ipv6.isValid()) {
+            meta.ipv6_metadata.is_ipv6 = 1;
+            meta.ipv6_metadata.next_proto = hdr.ipv6.nextHeader;
+            
+            // 检查 Hop Limit
+            if (hdr.ipv6.hopLimit <= 1) {
+                // 发送 ICMPv6 Time Exceeded
+                drop();
+            } else {
+                hdr.ipv6.hopLimit = hdr.ipv6.hopLimit - 1;
+            }
+            
+            // 检查版本
+            if (hdr.ipv6.version != 6) {
+                drop();
+            }
+            
+            // 检查是否为组播地址
+            // IPv6 组播地址以 FF00::/8 开头
+            bit<8> dst_prefix = hdr.ipv6.dstAddr[127:120];
+            if (dst_prefix == 0xFF) {
+                meta.ipv6_metadata.is_multicast = 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 2: NeighborDiscoveryTable - 邻居发现表（替代 ARP）
+// ============================================================
+module NeighborDiscoveryTable() {
+    control {
+        // 邻居缓存表：IPv6 -> MAC
+        static map<bit<128>, bit<48>>[512] neighbor_cache;
+        
+        // 邻居可达性状态
+        static map<bit<128>, bit<2>>[512] neighbor_state;
+        // 0=INCOMPLETE, 1=REACHABLE, 2=STALE, 3=DELAY
+        
+        if (meta.ipv6_metadata.is_ipv6 == 1) {
+            // 查找下一跳的 MAC 地址
+            if (meta.ipv6_metadata.next_hop_ipv6 in neighbor_cache) {
+                // 邻居缓存命中
+                meta.ipv6_metadata.next_hop_mac = neighbor_cache[meta.ipv6_metadata.next_hop_ipv6];
+                meta.ipv6_metadata.need_nd = 0;
+                
+                // 检查状态，如果是 STALE，应该发起可达性确认
+                bit<2> state = neighbor_state[meta.ipv6_metadata.next_hop_ipv6];
+                if (state == 2) {
+                    // STALE 状态，需要验证
+                    // 实际实现中应发送 Neighbor Solicitation
+                }
+            } else {
+                // 邻居缓存未命中，需要发起邻居发现
+                meta.ipv6_metadata.need_nd = 1;
+                // 应该生成 Neighbor Solicitation 消息
+                drop();
+            }
+        }
+        
+        // 处理邻居发现消息
+        if (hdr.icmpv6.isValid()) {
+            // Neighbor Solicitation (NS)
+            if (hdr.icmpv6.type == ICMPV6_NEIGHBOR_SOLICIT) {
+                // 更新邻居缓存
+                neighbor_cache[hdr.ipv6.srcAddr] = hdr.ethernet.srcAddr;
+                neighbor_state[hdr.ipv6.srcAddr] = 1;  // REACHABLE
+                
+                // 如果查询的是本机地址，应答 NA
+                // 这里简化处理
+            }
+            
+            // Neighbor Advertisement (NA)
+            else if (hdr.icmpv6.type == ICMPV6_NEIGHBOR_ADVERT) {
+                // 更新邻居缓存
+                if (hdr.ipv6_nd_na.isValid()) {
+                    neighbor_cache[hdr.ipv6_nd_na.targetAddr] = hdr.ethernet.srcAddr;
+                    neighbor_state[hdr.ipv6_nd_na.targetAddr] = 1;  // REACHABLE
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 3: IPv6RoutingTable - IPv6 路由表
+// ============================================================
+module IPv6RoutingTable() {
+    control {
+        // IPv6 路由表（简化实现）
+        // 实际应使用 Trie 或其他高效的 LPM 结构
+        
+        if (meta.ipv6_metadata.is_ipv6 == 1) {
+            bit<128> dst_addr = hdr.ipv6.dstAddr;
+            
+            // 检查本地链路地址 FE80::/10
+            bit<10> link_local_prefix = dst_addr[127:118];
+            if (link_local_prefix == 0x3FA) {  // FE80
+                // 本地链路地址，直接转发
+                meta.ipv6_metadata.routing_hit = 1;
+                meta.ipv6_metadata.next_hop_ipv6 = dst_addr;
+                meta.ipv6_metadata.egress_port = 1;  // 本地链路端口
+            }
+            
+            // 检查唯一本地地址 FC00::/7
+            bit<7> unique_local_prefix = dst_addr[127:121];
+            else if (unique_local_prefix == 0x7E || unique_local_prefix == 0x7F) {
+                // 唯一本地地址
+                meta.ipv6_metadata.routing_hit = 1;
+                // 查询内部路由表
+                meta.ipv6_metadata.egress_port = 2;
+            }
+            
+            // 检查全局单播地址 2000::/3
+            bit<3> global_prefix = dst_addr[127:125];
+            else if (global_prefix == 0x1) {  // 001
+                // 全局单播地址
+                meta.ipv6_metadata.routing_hit = 1;
+                
+                // 简化的路由查找
+                // 实际应实现完整的 LPM
+                
+                // 示例：2001:db8:1::/64 -> port 3
+                bit<64> network_prefix = dst_addr[127:64];
+                if (network_prefix == 0x20010DB80001) {
+                    meta.ipv6_metadata.egress_port = 3;
+                    meta.ipv6_metadata.next_hop_ipv6 = dst_addr;
+                }
+                // 示例：2001:db8:2::/64 -> port 4
+                else if (network_prefix == 0x20010DB80002) {
+                    meta.ipv6_metadata.egress_port = 4;
+                    meta.ipv6_metadata.next_hop_ipv6 = dst_addr;
+                }
+                // 默认路由
+                else {
+                    meta.ipv6_metadata.egress_port = 1;
+                    // 下一跳是默认网关
+                    meta.ipv6_metadata.next_hop_ipv6 = 0xFE800000000000000000000000000001;
+                }
+            }
+            
+            // 组播地址 FF00::/8
+            else if (meta.ipv6_metadata.is_multicast == 1) {
+                // 组播转发
+                // 根据组播路由表转发
+                meta.ipv6_metadata.routing_hit = 1;
+                meta.ipv6_metadata.egress_port = 255;  // 广播标志
+            }
+            
+            // 没有匹配的路由
+            else {
+                meta.ipv6_metadata.routing_hit = 0;
+                drop();
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 4: IPv6Forwarding - IPv6 转发
+// ============================================================
+module IPv6Forwarding() {
+    control {
+        if (meta.ipv6_metadata.is_ipv6 == 1 &&
+            meta.ipv6_metadata.routing_hit == 1 &&
+            meta.ipv6_metadata.need_nd == 0) {
+            
+            // 设置出端口
+            pkt.out_port = meta.ipv6_metadata.egress_port;
+            
+            // 更新以太网头部
+            hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;  // 简化
+            hdr.ethernet.dstAddr = meta.ipv6_metadata.next_hop_mac;
+        }
+    }
+}
+
+// ============================================================
+// 模块 5: IPv6FlowClassification - 流分类和 QoS
+// ============================================================
+module IPv6FlowClassification() {
+    control {
+        if (meta.ipv6_metadata.is_ipv6 == 1) {
+            // 提取流量类别和流标签
+            bit<8> traffic_class = hdr.ipv6.trafficClass;
+            bit<20> flow_label = hdr.ipv6.flowLabel;
+            
+            // 根据流量类别设置优先级
+            bit<6> dscp = traffic_class >> 2;
+            
+            if (dscp >= 46) {
+                // EF - 最高优先级
+                meta.ipv6_metadata.traffic_class = 3;
+            } else if (dscp >= 32) {
+                // AF4x - 高优先级
+                meta.ipv6_metadata.traffic_class = 2;
+            } else if (dscp >= 16) {
+                // AF2x - 中优先级
+                meta.ipv6_metadata.traffic_class = 1;
+            } else {
+                // Best Effort
+                meta.ipv6_metadata.traffic_class = 0;
+            }
+            
+            // 流标签可用于快速识别流
+            // 0 表示没有特殊流处理
+            if (flow_label != 0) {
+                // 基于流标签的快速转发
+                // 可以建立流缓存表
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 6: IPv6Statistics - 统计信息
+// ============================================================
+module IPv6Statistics() {
+    control {
+        static bit<64> ipv6_packets[1];
+        static bit<64> ipv6_bytes[1];
+        static bit<64> icmpv6_packets[1];
+        static bit<64> tcp_packets[1];
+        static bit<64> udp_packets[1];
+        static bit<64> multicast_packets[1];
+        
+        if (meta.ipv6_metadata.is_ipv6 == 1) {
+            ipv6_packets[0] = ipv6_packets[0] + 1;
+            ipv6_bytes[0] = ipv6_bytes[0] + hdr.ipv6.payloadLen + 40;  // +40 for IPv6 header
+            
+            if (hdr.ipv6.nextHeader == IPV6_NEXT_ICMPV6) {
+                icmpv6_packets[0] = icmpv6_packets[0] + 1;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_TCP) {
+                tcp_packets[0] = tcp_packets[0] + 1;
+            } else if (hdr.ipv6.nextHeader == IPV6_NEXT_UDP) {
+                udp_packets[0] = udp_packets[0] + 1;
+            }
+            
+            if (meta.ipv6_metadata.is_multicast == 1) {
+                multicast_packets[0] = multicast_packets[0] + 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 应用: IPv6Router - 组合所有模块实现完整的 IPv6 路由器
+// ============================================================
+application IPv6Router using Parser {
+    // 1. 解析 IPv6 数据包
+    IPv6Parser.apply();
+    
+    // 2. 路由表查找
+    IPv6RoutingTable.apply();
+    
+    // 3. 邻居发现
+    NeighborDiscoveryTable.apply();
+    
+    // 4. 流分类和 QoS
+    IPv6FlowClassification.apply();
+    
+    // 5. IPv6 转发
+    IPv6Forwarding.apply();
+    
+    // 6. 统计信息
+    IPv6Statistics.apply();
+}
+

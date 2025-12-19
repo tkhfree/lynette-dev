@@ -1,0 +1,175 @@
+// ============================================================
+// GeoNetworking 协议头部定义
+// 基于 ETSI EN 302 636 标准
+// 适用于车联网（V2X）通信
+// ============================================================
+
+// 类型定义
+typedef bit<9>  port_num_t;
+typedef bit<48> mac_addr_t;
+typedef bit<32> geo_address_t;  // GN_ADDR (简化版)
+
+// 以太网类型定义
+const bit<16> ETHERTYPE_GEO = 0x8947;  // GeoNetworking
+
+// GeoNetworking 头部类型（HT字段）
+const bit<4> GEO_ANY           = 0x0;
+const bit<4> GEO_BEACON        = 0x1;  // 位置信标
+const bit<4> GEO_GEOUNICAST    = 0x2;  // 地理单播
+const bit<4> GEO_GEOANYCAST    = 0x3;  // 地理任播
+const bit<4> GEO_GEOBROADCAST  = 0x4;  // 地理广播（GBC）
+const bit<4> GEO_TSB           = 0x5;  // 拓扑范围广播
+const bit<4> GEO_LS            = 0x6;  // 位置服务
+
+// GeoNetworking 头部子类型（HST字段）
+const bit<4> GBC_CIRCLE        = 0x0;  // 圆形区域
+const bit<4> GBC_RECT          = 0x1;  // 矩形区域
+const bit<4> GBC_ELLIPSE       = 0x2;  // 椭圆区域
+
+// ============================================================
+// 以太网头部
+// ============================================================
+header ethernet_t {
+    mac_addr_t dstAddr;
+    mac_addr_t srcAddr;
+    bit<16>    etherType;
+}
+
+// ============================================================
+// GeoNetworking 基本头部（Basic Header）
+// ============================================================
+header geo_basic_t {
+    bit<4>  version;        // 版本号（当前为1）
+    bit<4>  nextHeader;     // 下一个头部类型
+    bit<8>  reserved;       // 保留字段
+    bit<8>  lifetime;       // 数据包生存时间（LT）
+    bit<8>  remainingHL;    // 剩余跳数限制（RHL）
+}
+
+// ============================================================
+// GeoNetworking 公共头部（Common Header）
+// ============================================================
+header geo_common_t {
+    bit<4>  nextHeader;     // 下一个头部类型
+    bit<4>  reserved1;      // 保留
+    bit<4>  headerType;     // 头部类型（HT）
+    bit<4>  headerSubType;  // 头部子类型（HST）
+    bit<8>  trafficClass;   // 流量类别
+    bit<8>  flags;          // 标志位
+    bit<16> payloadLength;  // 载荷长度
+    bit<8>  maxHopLimit;    // 最大跳数限制
+    bit<8>  reserved2;      // 保留
+}
+
+// ============================================================
+// 长位置向量（Long Position Vector）
+// 用于描述车辆的地理位置和运动状态
+// ============================================================
+header geo_long_position_vector_t {
+    bit<64> gnAddress;      // GeoNetworking地址
+    bit<32> timestamp;      // 时间戳（TST）
+    bit<32> latitude;       // 纬度（lat）
+    bit<32> longitude;      // 经度（long）
+    bit<1>  posAccuracy;    // 位置精度指示（PAI）
+    bit<15> speed;          // 速度（S）
+    bit<16> heading;        // 航向角（H）
+}
+
+// ============================================================
+// 短位置向量（Short Position Vector）
+// ============================================================
+header geo_short_position_vector_t {
+    bit<64> gnAddress;      // GeoNetworking地址
+    bit<32> timestamp;      // 时间戳
+    bit<32> latitude;       // 纬度
+    bit<32> longitude;      // 经度
+}
+
+// ============================================================
+// GeoBroadcast 头部（GBC）
+// 用于向特定地理区域广播消息
+// ============================================================
+header geo_gbc_t {
+    bit<16> sequenceNumber;     // 序列号
+    bit<16> reserved;           // 保留
+    
+    // 源位置向量（Source Long Position Vector）
+    bit<64> srcGnAddr;          // 源GN地址
+    bit<32> srcTimestamp;       // 源时间戳
+    bit<32> srcLatitude;        // 源纬度
+    bit<32> srcLongitude;       // 源经度
+    bit<1>  srcPosAccuracy;     // 源位置精度
+    bit<15> srcSpeed;           // 源速度
+    bit<16> srcHeading;         // 源航向
+    
+    // 目标地理区域
+    bit<32> geoAreaLatitude;    // 区域中心纬度
+    bit<32> geoAreaLongitude;   // 区域中心经度
+    bit<16> distanceA;          // 距离A（半长轴）
+    bit<16> distanceB;          // 距离B（半短轴）
+    bit<16> angle;              // 角度
+    bit<16> reserved2;          // 保留
+}
+
+// ============================================================
+// Beacon 头部
+// 用于周期性广播车辆位置信息
+// ============================================================
+header geo_beacon_t {
+    bit<64> gnAddress;          // GN地址
+    bit<32> timestamp;          // 时间戳
+    bit<32> latitude;           // 纬度
+    bit<32> longitude;          // 经度
+    bit<1>  posAccuracy;        // 位置精度
+    bit<15> speed;              // 速度
+    bit<16> heading;            // 航向
+}
+
+// ============================================================
+// GeoUnicast 头部（GUC）
+// 用于向特定地理位置的节点发送单播消息
+// ============================================================
+header geo_guc_t {
+    bit<16> sequenceNumber;     // 序列号
+    bit<16> reserved;           // 保留
+    
+    // 源位置向量
+    bit<64> srcGnAddr;
+    bit<32> srcTimestamp;
+    bit<32> srcLatitude;
+    bit<32> srcLongitude;
+    bit<1>  srcPosAccuracy;
+    bit<15> srcSpeed;
+    bit<16> srcHeading;
+    
+    // 目标位置向量（Short）
+    bit<64> dstGnAddr;
+    bit<32> dstTimestamp;
+    bit<32> dstLatitude;
+    bit<32> dstLongitude;
+}
+
+// ============================================================
+// BTP (Basic Transport Protocol) 头部
+// 用于传输层
+// ============================================================
+header btp_t {
+    bit<16> destinationPort;        // 目标端口
+    bit<16> destinationPortInfo;    // 目标端口信息
+}
+
+// ============================================================
+// GeoNetworking 元数据（用于交换机内部处理）
+// ============================================================
+metadata geo_metadata_t {
+    bit<1>  is_geo;             // 是否为GeoNetworking包
+    bit<4>  packet_type;        // 包类型（HT）
+    bit<4>  packet_subtype;     // 包子类型（HST）
+    bit<32> my_latitude;        // 本节点纬度
+    bit<32> my_longitude;       // 本节点经度
+    bit<1>  in_target_area;     // 是否在目标区域内
+    bit<1>  need_forward;       // 是否需要转发
+    bit<32> distance_to_dest;   // 到目标的距离
+    bit<9>  best_next_hop;      // 最佳下一跳端口
+}
+

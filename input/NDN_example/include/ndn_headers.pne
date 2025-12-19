@@ -1,0 +1,47 @@
+// ============================================================
+// NDN 协议头部定义
+// 基于 NFD Developer's Guide 规范
+// ============================================================
+
+// NDN TLV 类型定义
+const bit<8> NDN_INTEREST = 0x05;
+const bit<8> NDN_DATA = 0x06;
+const bit<8> NDN_NAME = 0x07;
+const bit<8> NDN_NAME_COMPONENT = 0x08;
+
+// 以太网类型 - NDN
+const bit<16> ETHERTYPE_NDN = 0x8624;
+
+// NDN Interest 头部
+header ndn_interest_t {
+    bit<8>  packet_type;      // 0x05 for Interest
+    bit<8>  length;           // Length of Interest
+    bit<8>  name_type;        // 0x07 for Name
+    bit<8>  name_length;      // Length of Name
+    bit<256> name_prefix;     // Name prefix (simplified, 32 bytes)
+    bit<32> nonce;            // Random nonce
+    bit<32> lifetime;         // Interest lifetime in ms
+}
+
+// NDN Data 头部
+header ndn_data_t {
+    bit<8>  packet_type;      // 0x06 for Data
+    bit<8>  length;           // Length of Data packet
+    bit<8>  name_type;        // 0x07 for Name
+    bit<8>  name_length;      // Length of Name
+    bit<256> name_prefix;     // Name prefix (simplified, 32 bytes)
+    bit<16> meta_info;        // MetaInfo
+    bit<16> content_type;     // Content type
+    bit<32> freshness;        // FreshnessPeriod in ms
+}
+
+// NDN 元数据（用于交换机内部处理）
+metadata ndn_metadata_t {
+    bit<1>  is_interest;      // 1 if Interest, 0 if Data
+    bit<1>  is_ndn;           // 1 if NDN packet
+    bit<32> name_hash;        // Hash of name for table lookup
+    bit<1>  pit_hit;          // PIT lookup result
+    bit<1>  cs_hit;           // CS lookup result
+    bit<9>  incoming_face;    // Incoming interface
+}
+

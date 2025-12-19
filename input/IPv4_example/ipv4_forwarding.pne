@@ -1,0 +1,357 @@
+// ============================================================
+// IPv4 转发模块
+// 实现标准 IPv4 路由和转发功能
+// 基于 RFC 791, RFC 1812
+// ============================================================
+
+#include "include/ipv4_headers.pne"
+
+// ============================================================
+// 模块 1: IPv4Parser - 解析 IPv4 数据包
+// ============================================================
+module IPv4Parser() {
+    parser {
+        hdr.ethernet;
+        
+        // 检查以太网类型
+        if (hdr.ethernet.etherType == ETHERTYPE_IPV4) {
+            hdr.ipv4;
+            
+            // 根据协议类型解析传输层
+            if (hdr.ipv4.protocol == IP_PROTO_ICMP) {
+                hdr.icmp;
+            } else if (hdr.ipv4.protocol == IP_PROTO_TCP) {
+                hdr.tcp;
+            } else if (hdr.ipv4.protocol == IP_PROTO_UDP) {
+                hdr.udp;
+            }
+        } else if (hdr.ethernet.etherType == ETHERTYPE_ARP) {
+            hdr.arp;
+        }
+    }
+    
+    control {
+        // 初始化元数据
+        meta.ipv4_metadata.is_ipv4 = 0;
+        meta.ipv4_metadata.routing_hit = 0;
+        meta.ipv4_metadata.need_arp = 0;
+        meta.ipv4_metadata.local_delivery = 0;
+        
+        // 识别 IPv4 数据包
+        if (hdr.ethernet.etherType == ETHERTYPE_IPV4 && hdr.ipv4.isValid()) {
+            meta.ipv4_metadata.is_ipv4 = 1;
+            meta.ipv4_metadata.next_proto = hdr.ipv4.protocol;
+            
+            // 检查 TTL
+            if (hdr.ipv4.ttl <= 1) {
+                // TTL 过期，发送 ICMP Time Exceeded
+                drop();
+            } else {
+                // 减少 TTL
+                hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+            }
+            
+            // 校验 IPv4 版本
+            if (hdr.ipv4.version != 4) {
+                drop();
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 2: ARPTable - ARP 地址解析表
+// ============================================================
+module ARPTable() {
+    control {
+        // ARP 缓存表：IP -> MAC
+        static map<bit<32>, bit<48>>[256] arp_cache;
+        
+        // ARP 表项超时时间戳
+        static map<bit<32>, bit<32>>[256] arp_timestamp;
+        
+        if (meta.ipv4_metadata.is_ipv4 == 1) {
+            // 查找下一跳的 MAC 地址
+            if (meta.ipv4_metadata.next_hop_ip in arp_cache) {
+                // ARP 缓存命中
+                meta.ipv4_metadata.next_hop_mac = arp_cache[meta.ipv4_metadata.next_hop_ip];
+                meta.ipv4_metadata.need_arp = 0;
+            } else {
+                // ARP 缓存未命中，需要发起 ARP 请求
+                meta.ipv4_metadata.need_arp = 1;
+                // 实际实现中应该生成 ARP 请求包
+                // 这里简化处理，丢弃包
+                drop();
+            }
+        }
+        
+        // 处理 ARP 包
+        if (hdr.ethernet.etherType == ETHERTYPE_ARP && hdr.arp.isValid()) {
+            if (hdr.arp.opcode == 1) {
+                // ARP 请求
+                // 更新 ARP 缓存
+                arp_cache[hdr.arp.srcIp] = hdr.arp.srcMac;
+                arp_timestamp[hdr.arp.srcIp] = standard_metadata.ingress_global_timestamp;
+                
+                // 检查是否查询本机 IP
+                // 如果是，生成 ARP 应答（这里简化处理）
+            } else if (hdr.arp.opcode == 2) {
+                // ARP 应答
+                arp_cache[hdr.arp.srcIp] = hdr.arp.srcMac;
+                arp_timestamp[hdr.arp.srcIp] = standard_metadata.ingress_global_timestamp;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 3: IPv4RoutingTable - IPv4 路由表
+// ============================================================
+module IPv4RoutingTable() {
+    control {
+        // 路由表：目标网络 -> (掩码, 下一跳, 出端口)
+        // 使用最长前缀匹配 (LPM)
+        
+        // 简化的路由表实现
+        // 实际应该使用 LPM 算法
+        map<bit<32>, bit<9>>[1024] routing_table {
+            // 默认路由 0.0.0.0/0 -> port 1
+            (0x00000000, 1);
+            
+            // 子网路由示例
+            // 192.168.1.0/24 -> port 2
+            (0xC0A80100, 2);
+            
+            // 192.168.2.0/24 -> port 3
+            (0xC0A80200, 3);
+            
+            // 10.0.0.0/8 -> port 4
+            (0x0A000000, 4);
+        };
+        
+        // 下一跳表：目标网络 -> 下一跳 IP
+        map<bit<32>, bit<32>>[1024] nexthop_table {
+            (0x00000000, 0xC0A80101);  // 默认网关 192.168.1.1
+            (0xC0A80100, 0x00000000);  // 直连网络，无需网关
+            (0xC0A80200, 0x00000000);  // 直连网络
+            (0x0A000000, 0xC0A80102);  // 经由 192.168.1.2
+        };
+        
+        if (meta.ipv4_metadata.is_ipv4 == 1) {
+            bit<32> dst_ip = hdr.ipv4.dstAddr;
+            
+            // 简化的路由查找（实际应实现 LPM）
+            // 先尝试精确匹配，再尝试网络匹配
+            
+            // 检查直连网络 192.168.1.0/24
+            bit<32> network_192_168_1 = dst_ip & 0xFFFFFF00;
+            if (network_192_168_1 == 0xC0A80100) {
+                meta.ipv4_metadata.routing_hit = 1;
+                meta.ipv4_metadata.egress_port = 2;
+                meta.ipv4_metadata.next_hop_ip = dst_ip;  // 直连，下一跳就是目标
+            }
+            
+            // 检查直连网络 192.168.2.0/24
+            bit<32> network_192_168_2 = dst_ip & 0xFFFFFF00;
+            else if (network_192_168_2 == 0xC0A80200) {
+                meta.ipv4_metadata.routing_hit = 1;
+                meta.ipv4_metadata.egress_port = 3;
+                meta.ipv4_metadata.next_hop_ip = dst_ip;
+            }
+            
+            // 检查 10.0.0.0/8 网络
+            bit<32> network_10 = dst_ip & 0xFF000000;
+            else if (network_10 == 0x0A000000) {
+                meta.ipv4_metadata.routing_hit = 1;
+                meta.ipv4_metadata.egress_port = 4;
+                meta.ipv4_metadata.next_hop_ip = 0xC0A80102;  // 网关
+            }
+            
+            // 使用默认路由
+            else {
+                meta.ipv4_metadata.routing_hit = 1;
+                meta.ipv4_metadata.egress_port = 1;
+                meta.ipv4_metadata.next_hop_ip = 0xC0A80101;  // 默认网关
+            }
+            
+            // 如果没有路由，丢弃
+            if (meta.ipv4_metadata.routing_hit == 0) {
+                drop();
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 4: IPv4Forwarding - IPv4 转发
+// ============================================================
+module IPv4Forwarding() {
+    control {
+        if (meta.ipv4_metadata.is_ipv4 == 1 && 
+            meta.ipv4_metadata.routing_hit == 1 &&
+            meta.ipv4_metadata.need_arp == 0) {
+            
+            // 设置出端口
+            pkt.out_port = meta.ipv4_metadata.egress_port;
+            
+            // 更新以太网头部
+            hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;  // 简化：使用接收到的 MAC
+            hdr.ethernet.dstAddr = meta.ipv4_metadata.next_hop_mac;
+            
+            // 更新 IPv4 校验和
+            // 注意：实际实现需要重新计算校验和
+            // 这里简化处理
+            hdr.ipv4.hdrChecksum = calculate_checksum(hdr.ipv4);
+        }
+    }
+    
+    // 辅助函数：计算 IPv4 头部校验和
+    function bit<16> calculate_checksum(ipv4_t ipv4_hdr) {
+        // 简化实现
+        // 实际应该按照 RFC 1071 计算
+        bit<16> checksum = 0x0000;
+        // TODO: 实现完整的校验和算法
+        return checksum;
+    }
+}
+
+// ============================================================
+// 模块 5: AccessControlList - 访问控制列表（ACL）
+// ============================================================
+module AccessControlList() {
+    control {
+        // ACL 规则表
+        // 格式: (源IP, 目标IP, 协议, 动作)
+        
+        if (meta.ipv4_metadata.is_ipv4 == 1) {
+            bit<32> src_ip = hdr.ipv4.srcAddr;
+            bit<32> dst_ip = hdr.ipv4.dstAddr;
+            bit<8>  proto  = hdr.ipv4.protocol;
+            
+            // 示例 ACL 规则
+            
+            // 规则 1: 阻止来自 192.168.1.100 的所有流量
+            if (src_ip == 0xC0A80164) {
+                drop();
+            }
+            
+            // 规则 2: 允许 ICMP
+            if (proto == IP_PROTO_ICMP) {
+                // 允许通过
+            }
+            
+            // 规则 3: 仅允许特定源访问 10.0.0.1
+            if (dst_ip == 0x0A000001) {
+                // 检查源 IP 是否在白名单
+                bit<32> network_src = src_ip & 0xFFFFFF00;
+                if (network_src != 0xC0A80100) {
+                    // 不在白名单，拒绝
+                    drop();
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 6: QoSClassifier - QoS 分类和标记
+// ============================================================
+module QoSClassifier() {
+    control {
+        if (meta.ipv4_metadata.is_ipv4 == 1) {
+            bit<8> dscp = hdr.ipv4.diffserv >> 2;  // 提取 DSCP 值
+            
+            // 根据 DSCP 进行分类
+            if (dscp >= 46) {
+                // EF (Expedited Forwarding) - 最高优先级
+                set_queue_priority(3);
+            } else if (dscp >= 32) {
+                // AF4x (Assured Forwarding) - 高优先级
+                set_queue_priority(2);
+            } else if (dscp >= 16) {
+                // AF2x - 中优先级
+                set_queue_priority(1);
+            } else {
+                // Best Effort - 默认优先级
+                set_queue_priority(0);
+            }
+            
+            // 根据应用端口进行标记
+            if (hdr.tcp.isValid()) {
+                if (hdr.tcp.dstPort == 80 || hdr.tcp.dstPort == 443) {
+                    // HTTP/HTTPS 流量
+                    set_traffic_class(1);
+                } else if (hdr.tcp.dstPort == 22) {
+                    // SSH 流量 - 高优先级
+                    set_traffic_class(2);
+                }
+            }
+        }
+    }
+    
+    function void set_queue_priority(bit<2> priority) {
+        // 设置队列优先级
+        standard_metadata.priority = priority;
+    }
+    
+    function void set_traffic_class(bit<3> tc) {
+        // 设置流量类别
+        meta.ipv4_metadata.traffic_class = tc;
+    }
+}
+
+// ============================================================
+// 模块 7: IPv4Statistics - 统计信息
+// ============================================================
+module IPv4Statistics() {
+    control {
+        static bit<64> ipv4_packets[1];
+        static bit<64> ipv4_bytes[1];
+        static bit<64> icmp_packets[1];
+        static bit<64> tcp_packets[1];
+        static bit<64> udp_packets[1];
+        static bit<64> dropped_packets[1];
+        
+        if (meta.ipv4_metadata.is_ipv4 == 1) {
+            // 统计 IPv4 包
+            ipv4_packets[0] = ipv4_packets[0] + 1;
+            ipv4_bytes[0] = ipv4_bytes[0] + hdr.ipv4.totalLen;
+            
+            // 按协议统计
+            if (hdr.ipv4.protocol == IP_PROTO_ICMP) {
+                icmp_packets[0] = icmp_packets[0] + 1;
+            } else if (hdr.ipv4.protocol == IP_PROTO_TCP) {
+                tcp_packets[0] = tcp_packets[0] + 1;
+            } else if (hdr.ipv4.protocol == IP_PROTO_UDP) {
+                udp_packets[0] = udp_packets[0] + 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 应用: IPv4Router - 组合所有模块实现完整的 IPv4 路由器
+// ============================================================
+application IPv4Router using Parser {
+    // 1. 解析 IPv4 数据包
+    IPv4Parser.apply();
+    
+    // 2. 访问控制列表（ACL）
+    AccessControlList.apply();
+    
+    // 3. 路由表查找
+    IPv4RoutingTable.apply();
+    
+    // 4. ARP 地址解析
+    ARPTable.apply();
+    
+    // 5. QoS 分类
+    QoSClassifier.apply();
+    
+    // 6. IPv4 转发
+    IPv4Forwarding.apply();
+    
+    // 7. 统计信息
+    IPv4Statistics.apply();
+}
+

@@ -1,0 +1,77 @@
+#include <standard_headers.pne>
+
+// ============================================================
+// 示例：简单的 IPv4 转发应用
+// 适用于 Tofino 交换机
+// ============================================================
+
+// 模块：IPv4 路由转发
+module IPv4Forwarding() {
+    parser {
+        hdr.ethernet;
+        hdr.ipv4;
+    }
+    
+    control {
+        // 定义 IPv4 路由表
+        // 使用 map 数据结构，键为目的 IP，值为出端口
+        map<bit<32>, bit<9>>[1024] ipv4_lpm_table {
+            (0x0A000001, 1);  // 10.0.0.1 -> port 1
+            (0x0A000002, 2);  // 10.0.0.2 -> port 2
+            (0x0A000003, 3);  // 10.0.0.3 -> port 3
+        };
+        
+        // 检查 IPv4 头部是否有效
+        if (hdr.ipv4.isValid()) {
+            // 查找路由表
+            if (hdr.ipv4.dstAddr in ipv4_lpm_table) {
+                // 找到匹配项，设置出端口
+                pkt.out_port = ipv4_lpm_table[hdr.ipv4.dstAddr];
+                
+                // 更新 TTL
+                hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+                
+                // 检查 TTL 是否过期
+                if (hdr.ipv4.ttl == 0) {
+                    drop();
+                }
+            } else {
+                // 没有匹配项，丢弃数据包
+                drop();
+            }
+        } else {
+            // 非 IPv4 数据包，丢弃
+            drop();
+        }
+    }
+}
+
+// 模块：流量统计
+module TrafficCounter() {
+    control {
+        // 定义计数器寄存器
+        static bit<64> packet_counter[1024];
+        static bit<64> byte_counter[1024];
+        
+        // 如果是 IPv4 数据包，进行统计
+        if (hdr.ipv4.isValid()) {
+            // 使用源 IP 地址的低 10 位作为索引
+            bit<10> index;
+            index = hdr.ipv4.srcAddr[9:0];
+            
+            // 更新计数器
+            packet_counter[index] = packet_counter[index] + 1;
+            byte_counter[index] = byte_counter[index] + hdr.ipv4.totalLen;
+        }
+    }
+}
+
+// 应用：组合转发和统计功能
+application SimpleRouter using Parser {
+    // 先进行流量统计
+    TrafficCounter.apply();
+    
+    // 然后进行转发
+    IPv4Forwarding.apply();
+}
+

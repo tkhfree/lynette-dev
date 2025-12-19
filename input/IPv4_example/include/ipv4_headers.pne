@@ -1,0 +1,111 @@
+// ============================================================
+// IPv4 协议头部定义
+// 基于 RFC 791 标准
+// ============================================================
+
+// 类型定义
+typedef bit<9>  port_num_t;
+typedef bit<48> mac_addr_t;
+typedef bit<32> ipv4_addr_t;
+
+// 以太网类型
+const bit<16> ETHERTYPE_IPV4 = 0x0800;
+const bit<16> ETHERTYPE_ARP  = 0x0806;
+
+// IP 协议类型
+const bit<8> IP_PROTO_ICMP = 0x01;
+const bit<8> IP_PROTO_TCP  = 0x06;
+const bit<8> IP_PROTO_UDP  = 0x11;
+
+// ============================================================
+// 以太网头部
+// ============================================================
+header ethernet_t {
+    mac_addr_t dstAddr;      // 目标 MAC 地址
+    mac_addr_t srcAddr;      // 源 MAC 地址
+    bit<16>    etherType;    // 以太网类型
+}
+
+// ============================================================
+// IPv4 头部（RFC 791）
+// ============================================================
+header ipv4_t {
+    bit<4>  version;         // 版本号（4）
+    bit<4>  ihl;             // 头部长度（以 32-bit 字为单位）
+    bit<8>  diffserv;        // 服务类型（DSCP + ECN）
+    bit<16> totalLen;        // 总长度
+    bit<16> identification;  // 标识
+    bit<3>  flags;           // 标志位
+    bit<13> fragOffset;      // 分片偏移
+    bit<8>  ttl;             // 生存时间
+    bit<8>  protocol;        // 上层协议
+    bit<16> hdrChecksum;     // 头部校验和
+    ipv4_addr_t srcAddr;     // 源 IP 地址
+    ipv4_addr_t dstAddr;     // 目标 IP 地址
+}
+
+// ============================================================
+// ARP 头部（地址解析协议）
+// ============================================================
+header arp_t {
+    bit<16> hwType;          // 硬件类型（1 = Ethernet）
+    bit<16> protoType;       // 协议类型（0x0800 = IPv4）
+    bit<8>  hwAddrLen;       // 硬件地址长度（6）
+    bit<8>  protoAddrLen;    // 协议地址长度（4）
+    bit<16> opcode;          // 操作码（1=请求, 2=应答）
+    mac_addr_t srcMac;       // 发送者 MAC
+    ipv4_addr_t srcIp;       // 发送者 IP
+    mac_addr_t dstMac;       // 目标 MAC
+    ipv4_addr_t dstIp;       // 目标 IP
+}
+
+// ============================================================
+// ICMP 头部（Internet Control Message Protocol）
+// ============================================================
+header icmp_t {
+    bit<8>  type;            // ICMP 类型
+    bit<8>  code;            // ICMP 代码
+    bit<16> checksum;        // 校验和
+    bit<32> rest;            // 剩余字段（取决于类型）
+}
+
+// ============================================================
+// TCP 头部（Transmission Control Protocol）
+// ============================================================
+header tcp_t {
+    bit<16> srcPort;         // 源端口
+    bit<16> dstPort;         // 目标端口
+    bit<32> seqNo;           // 序列号
+    bit<32> ackNo;           // 确认号
+    bit<4>  dataOffset;      // 数据偏移
+    bit<4>  res;             // 保留
+    bit<8>  flags;           // 标志位（CWR,ECE,URG,ACK,PSH,RST,SYN,FIN）
+    bit<16> window;          // 窗口大小
+    bit<16> checksum;        // 校验和
+    bit<16> urgentPtr;       // 紧急指针
+}
+
+// ============================================================
+// UDP 头部（User Datagram Protocol）
+// ============================================================
+header udp_t {
+    bit<16> srcPort;         // 源端口
+    bit<16> dstPort;         // 目标端口
+    bit<16> length;          // 长度
+    bit<16> checksum;        // 校验和
+}
+
+// ============================================================
+// IPv4 元数据（用于交换机内部处理）
+// ============================================================
+metadata ipv4_metadata_t {
+    bit<1>  is_ipv4;         // 是否为 IPv4 包
+    bit<8>  next_proto;      // 下一层协议
+    bit<1>  need_arp;        // 是否需要 ARP 解析
+    bit<1>  routing_hit;     // 路由表命中
+    bit<1>  local_delivery;  // 本地交付
+    bit<32> next_hop_ip;     // 下一跳 IP
+    bit<48> next_hop_mac;    // 下一跳 MAC
+    bit<9>  egress_port;     // 出端口
+}
+

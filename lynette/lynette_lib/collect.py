@@ -69,7 +69,7 @@ Module 组件结构：
 """
 
 from lark import Lark, Tree, Token
-from lynette_lib import data_structure
+from lynette.lynette_lib import data_structure
 
 def collect_ins_assign(ins:Tree):
     ins_data = data_structure.LYNETTE_INS()

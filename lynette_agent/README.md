@@ -16,7 +16,8 @@ pip install -r lynette_agent/requirements.txt
 
 ```bash
 # 设置API Key（可选）
-export LYNETTE_API_KEY=your_api_key
+export LYNETTE_API_KEY=9e3b500e76df4145a50e0d1690b91177.wS0L2NL1EhXY3rXv
+your_api_key
 
 # 启动服务
 python -m lynette_agent.server
@@ -114,6 +115,17 @@ print(status)
 2. 确保输入文件路径正确
 3. 编译任务为异步执行，需要轮询查询状态
 4. API Key认证为简化实现，生产环境应使用更安全的认证方式
+
+
+
+
+
+
+
+
+
+
+
 
 
 

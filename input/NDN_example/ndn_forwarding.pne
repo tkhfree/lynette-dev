@@ -1,0 +1,219 @@
+// ============================================================
+// NDN 转发模块
+// 实现 NFD 核心转发平面功能
+// ============================================================
+
+#include "include/standard_headers.pne"
+#include "include/ndn_headers.pne"
+
+// ============================================================
+// 模块 1: NDN Parser - 解析 NDN 数据包
+// ============================================================
+module NDNParser() {
+    parser {
+        hdr.ethernet;
+        
+        // 检查是否是 NDN 数据包
+        if (hdr.ethernet.etherType == ETHERTYPE_NDN) {
+            hdr.ndn_interest;
+            hdr.ndn_data;
+        }
+    }
+    
+    control {
+        // 初始化 NDN 元数据
+        meta.ndn_metadata.is_ndn = 0;
+        meta.ndn_metadata.is_interest = 0;
+        meta.ndn_metadata.pit_hit = 0;
+        meta.ndn_metadata.cs_hit = 0;
+        meta.ndn_metadata.incoming_face = pkt.in_port;
+        
+        // 识别 NDN 数据包类型
+        if (hdr.ethernet.etherType == ETHERTYPE_NDN) {
+            meta.ndn_metadata.is_ndn = 1;
+            
+            if (hdr.ndn_interest.isValid()) {
+                meta.ndn_metadata.is_interest = 1;
+                // 计算名字哈希用于查表
+                meta.ndn_metadata.name_hash = hash(hdr.ndn_interest.name_prefix);
+            } else if (hdr.ndn_data.isValid()) {
+                meta.ndn_metadata.is_interest = 0;
+                meta.ndn_metadata.name_hash = hash(hdr.ndn_data.name_prefix);
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 2: Content Store (CS) - 内容缓存
+// ============================================================
+module ContentStore() {
+    control {
+        // CS 缓存表 - 存储 Data 包的名字到缓存标志的映射
+        static map<bit<32>, bit<1>>[256] cs_table;
+        
+        // CS 缓存的 Data 包数据（简化版，实际应存储完整 Data）
+        static map<bit<32>, bit<256>>[256] cs_data;
+        
+        if (meta.ndn_metadata.is_ndn == 1) {
+            // 处理 Interest - 检查 CS
+            if (meta.ndn_metadata.is_interest == 1) {
+                if (meta.ndn_metadata.name_hash in cs_table) {
+                    // CS 命中！将缓存的 Data 发回
+                    meta.ndn_metadata.cs_hit = 1;
+                    
+                    // 从 incoming face 发回 Data
+                    pkt.out_port = meta.ndn_metadata.incoming_face;
+                    
+                    // 这里应该构造并发送 Data 包（简化处理）
+                    // 实际实现需要重写包头
+                }
+            }
+            // 处理 Data - 缓存到 CS
+            else {
+                // 将 Data 包添加到缓存
+                cs_table[meta.ndn_metadata.name_hash] = 1;
+                cs_data[meta.ndn_metadata.name_hash] = hdr.ndn_data.name_prefix;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 3: Pending Interest Table (PIT) - 待处理兴趣表
+// ============================================================
+module PendingInterestTable() {
+    control {
+        // PIT 表 - 存储待处理的 Interest
+        // 键: name_hash, 值: incoming_face
+        static map<bit<32>, bit<9>>[1024] pit_table;
+        
+        // PIT 表中存储的 nonce（用于环路检测）
+        static map<bit<32>, bit<32>>[1024] pit_nonce;
+        
+        if (meta.ndn_metadata.is_ndn == 1 && meta.ndn_metadata.cs_hit == 0) {
+            // 处理 Interest
+            if (meta.ndn_metadata.is_interest == 1) {
+                // 检查是否已存在相同 Interest（聚合）
+                if (meta.ndn_metadata.name_hash in pit_table) {
+                    // 已存在，检查 nonce 是否相同（环路检测）
+                    if (pit_nonce[meta.ndn_metadata.name_hash] == hdr.ndn_interest.nonce) {
+                        // 检测到环路，丢弃
+                        drop();
+                    } else {
+                        // 聚合 Interest，更新 incoming face
+                        // 注意：实际实现应该维护多个 incoming faces
+                        pit_table[meta.ndn_metadata.name_hash] = meta.ndn_metadata.incoming_face;
+                    }
+                } else {
+                    // 新的 Interest，添加到 PIT
+                    pit_table[meta.ndn_metadata.name_hash] = meta.ndn_metadata.incoming_face;
+                    pit_nonce[meta.ndn_metadata.name_hash] = hdr.ndn_interest.nonce;
+                    meta.ndn_metadata.pit_hit = 0;
+                }
+            }
+            // 处理 Data - 使用 PIT 转发
+            else {
+                if (meta.ndn_metadata.name_hash in pit_table) {
+                    // PIT 命中，发送 Data 到记录的 face
+                    meta.ndn_metadata.pit_hit = 1;
+                    pkt.out_port = pit_table[meta.ndn_metadata.name_hash];
+                    
+                    // 清除 PIT 条目（满足了 Interest）
+                    pit_table[meta.ndn_metadata.name_hash] = 0;
+                    pit_nonce[meta.ndn_metadata.name_hash] = 0;
+                } else {
+                    // 未请求的 Data，丢弃
+                    drop();
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 4: Forwarding Information Base (FIB) - 转发信息库
+// ============================================================
+module ForwardingInformationBase() {
+    control {
+        // FIB 表 - 基于名字前缀的最长匹配
+        // 键: name_hash, 值: next_hop_face
+        map<bit<32>, bit<9>>[512] fib_table {
+            // 配置示例路由规则
+            // /ndn/edu/arizona -> port 1
+            (0x12345678, 1);
+            // /ndn/edu/ucla -> port 2
+            (0x23456789, 2);
+            // /ndn/edu/memphis -> port 3
+            (0x34567890, 3);
+            // 默认路由 -> port 1
+            (0x00000000, 1);
+        };
+        
+        if (meta.ndn_metadata.is_ndn == 1 && 
+            meta.ndn_metadata.cs_hit == 0 && 
+            meta.ndn_metadata.is_interest == 1) {
+            
+            // 仅对 Interest 使用 FIB（Data 使用 PIT）
+            if (meta.ndn_metadata.pit_hit == 0) {
+                // 新的 Interest，使用 FIB 转发
+                if (meta.ndn_metadata.name_hash in fib_table) {
+                    pkt.out_port = fib_table[meta.ndn_metadata.name_hash];
+                } else {
+                    // 使用默认路由
+                    pkt.out_port = fib_table[0x00000000];
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 5: NDN Statistics - 统计信息
+// ============================================================
+module NDNStatistics() {
+    control {
+        // 统计计数器
+        static bit<64> interest_counter[1];
+        static bit<64> data_counter[1];
+        static bit<64> cs_hit_counter[1];
+        static bit<64> pit_hit_counter[1];
+        
+        if (meta.ndn_metadata.is_ndn == 1) {
+            if (meta.ndn_metadata.is_interest == 1) {
+                interest_counter[0] = interest_counter[0] + 1;
+            } else {
+                data_counter[0] = data_counter[0] + 1;
+            }
+            
+            if (meta.ndn_metadata.cs_hit == 1) {
+                cs_hit_counter[0] = cs_hit_counter[0] + 1;
+            }
+            
+            if (meta.ndn_metadata.pit_hit == 1) {
+                pit_hit_counter[0] = pit_hit_counter[0] + 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 应用: NDN Router - 组合所有模块实现完整 NDN 路由器
+// ============================================================
+application NDNRouter using Parser {
+    // 1. 解析 NDN 数据包
+    NDNParser.apply();
+    
+    // 2. 检查内容缓存 (CS)
+    ContentStore.apply();
+    
+    // 3. 处理待处理兴趣表 (PIT)
+    PendingInterestTable.apply();
+    
+    // 4. 使用转发信息库 (FIB) 进行转发
+    ForwardingInformationBase.apply();
+    
+    // 5. 收集统计信息
+    NDNStatistics.apply();
+}
+

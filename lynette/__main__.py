@@ -2,14 +2,14 @@ import sys, os
 import argparse, json, time
 import socket
 
-from lynette_lib import parser_tree
-from lynette_lib import collect
-from lynette_lib.generate import Generator
-from lynette_lib import aggregate
-from lynette_lib import output
-from lynette_lib import data_structure
-from lynette_lib.clean import sh
-from lynette_lib.path_generator import generate_path_json
+from lynette.lynette_lib import parser_tree
+from lynette.lynette_lib import collect
+from lynette.lynette_lib.generate import Generator
+from lynette.lynette_lib import aggregate
+from lynette.lynette_lib import output
+from lynette.lynette_lib import data_structure
+from lynette.lynette_lib.clean import sh
+from lynette.lynette_lib.path_generator import generate_path_json
 
 class LynetteRunner():
     """Lynette编译器主运行类，负责协调整个编译流程。

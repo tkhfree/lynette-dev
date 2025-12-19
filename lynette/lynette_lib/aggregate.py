@@ -1,8 +1,8 @@
 from lark import Lark, Tree, Token
-from lynette_lib import data_structure
-from lynette_lib.grammar.grammar_define import grammar_define
-from lynette_lib.grammar.grammar_header import grammar_header
-from lynette_lib.grammar.grammar_parser import grammar_parser
+from lynette.lynette_lib import data_structure
+from lynette.lynette_lib.grammar.grammar_define import grammar_define
+from lynette.lynette_lib.grammar.grammar_header import grammar_header
+from lynette.lynette_lib.grammar.grammar_parser import grammar_parser
 import json, copy
 
 type_dict_global = {}

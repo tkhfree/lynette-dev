@@ -1,0 +1,87 @@
+// ============================================================
+// 标准头部定义
+// 定义常用的网络协议头部
+// ============================================================
+
+// 以太网类型常量
+const bit<16> ETHERTYPE_IPV4 = 0x0800;
+const bit<16> ETHERTYPE_ARP  = 0x0806;
+const bit<16> ETHERTYPE_IPV6 = 0x86DD;
+
+// IP 协议常量
+const bit<8> IP_PROTOCOL_TCP  = 6;
+const bit<8> IP_PROTOCOL_UDP  = 17;
+const bit<8> IP_PROTOCOL_ICMP = 1;
+
+// 类型定义
+typedef bit<48> mac_addr_t;
+typedef bit<32> ipv4_addr_t;
+typedef bit<16> port_num_t;
+
+// 以太网头部
+header ethernet_t {
+    mac_addr_t dstAddr;
+    mac_addr_t srcAddr;
+    bit<16>    etherType;
+}
+
+// IPv4 头部
+header ipv4_t {
+    bit<4>      version;
+    bit<4>      ihl;
+    bit<8>      diffserv;
+    bit<16>     totalLen;
+    bit<16>     identification;
+    bit<3>      flags;
+    bit<13>     fragOffset;
+    bit<8>      ttl;
+    bit<8>      protocol;
+    bit<16>     hdrChecksum;
+    ipv4_addr_t srcAddr;
+    ipv4_addr_t dstAddr;
+}
+
+// TCP 头部
+header tcp_t {
+    port_num_t srcPort;
+    port_num_t dstPort;
+    bit<32>    seqNo;
+    bit<32>    ackNo;
+    bit<4>     dataOffset;
+    bit<3>     res;
+    bit<9>     flags;
+    bit<16>    window;
+    bit<16>    checksum;
+    bit<16>    urgentPtr;
+}
+
+// UDP 头部
+header udp_t {
+    port_num_t srcPort;
+    port_num_t dstPort;
+    bit<16>    length;
+    bit<16>    checksum;
+}
+
+// 头部实例
+struct header_t {
+    ethernet_t ethernet;
+    ipv4_t     ipv4;
+    tcp_t      tcp;
+    udp_t      udp;
+}
+
+// 元数据
+struct metadata_t {
+    bit<16> tcp_length;
+    bit<32> flow_hash;
+    bit<1>  is_monitored;
+}
+
+// 数据包结构
+struct packet_t {
+    header_t   hdr;
+    metadata_t meta;
+    bit<9>     out_port;
+}
+

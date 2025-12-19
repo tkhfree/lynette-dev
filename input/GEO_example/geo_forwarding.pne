@@ -1,0 +1,329 @@
+// ============================================================
+// GeoNetworking 转发模块
+// 实现车联网地理位置路由
+// 基于 ETSI EN 302 636-4-1 标准
+// ============================================================
+
+#include "include/geo_headers.pne"
+
+// ============================================================
+// 模块 1: GeoParser - 解析 GeoNetworking 数据包
+// ============================================================
+module GeoParser() {
+    parser {
+        hdr.ethernet;
+        
+        // 检查是否是 GeoNetworking 数据包
+        if (hdr.ethernet.etherType == ETHERTYPE_GEO) {
+            hdr.geo_basic;
+            hdr.geo_common;
+            
+            // 根据头部类型解析不同的头部
+            if (hdr.geo_common.headerType == GEO_BEACON) {
+                hdr.geo_beacon;
+            } else if (hdr.geo_common.headerType == GEO_GEOBROADCAST) {
+                hdr.geo_gbc;
+            } else if (hdr.geo_common.headerType == GEO_GEOUNICAST) {
+                hdr.geo_guc;
+            }
+        }
+    }
+    
+    control {
+        // 初始化元数据
+        meta.geo_metadata.is_geo = 0;
+        meta.geo_metadata.in_target_area = 0;
+        meta.geo_metadata.need_forward = 1;
+        
+        // 识别 GeoNetworking 数据包
+        if (hdr.ethernet.etherType == ETHERTYPE_GEO) {
+            meta.geo_metadata.is_geo = 1;
+            meta.geo_metadata.packet_type = hdr.geo_common.headerType;
+            meta.geo_metadata.packet_subtype = hdr.geo_common.headerSubType;
+            
+            // 检查剩余跳数
+            if (hdr.geo_basic.remainingHL == 0) {
+                drop();
+            } else {
+                // 减少剩余跳数
+                hdr.geo_basic.remainingHL = hdr.geo_basic.remainingHL - 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 2: LocationTable - 位置表管理
+// 存储邻居节点的位置信息
+// ============================================================
+module LocationTable() {
+    control {
+        // 位置表：GN_ADDR -> (Latitude, Longitude, Timestamp)
+        static map<bit<64>, bit<32>>[256] location_latitude;
+        static map<bit<64>, bit<32>>[256] location_longitude;
+        static map<bit<64>, bit<32>>[256] location_timestamp;
+        
+        // 本节点位置（应该从配置或GPS获取）
+        // 这里使用静态配置作为示例
+        meta.geo_metadata.my_latitude = 0x1E8B4567;   // 示例纬度
+        meta.geo_metadata.my_longitude = 0x327B23C6;  // 示例经度
+        
+        if (meta.geo_metadata.is_geo == 1) {
+            // 处理 Beacon 消息 - 更新位置表
+            if (meta.geo_metadata.packet_type == GEO_BEACON) {
+                if (hdr.geo_beacon.isValid()) {
+                    location_latitude[hdr.geo_beacon.gnAddress] = hdr.geo_beacon.latitude;
+                    location_longitude[hdr.geo_beacon.gnAddress] = hdr.geo_beacon.longitude;
+                    location_timestamp[hdr.geo_beacon.gnAddress] = hdr.geo_beacon.timestamp;
+                    
+                    // Beacon 不转发，直接处理
+                    meta.geo_metadata.need_forward = 0;
+                    drop();
+                }
+            }
+            
+            // 处理 GBC 消息 - 从源位置向量更新位置表
+            if (meta.geo_metadata.packet_type == GEO_GEOBROADCAST) {
+                if (hdr.geo_gbc.isValid()) {
+                    location_latitude[hdr.geo_gbc.srcGnAddr] = hdr.geo_gbc.srcLatitude;
+                    location_longitude[hdr.geo_gbc.srcGnAddr] = hdr.geo_gbc.srcLongitude;
+                    location_timestamp[hdr.geo_gbc.srcGnAddr] = hdr.geo_gbc.srcTimestamp;
+                }
+            }
+            
+            // 处理 GUC 消息
+            if (meta.geo_metadata.packet_type == GEO_GEOUNICAST) {
+                if (hdr.geo_guc.isValid()) {
+                    location_latitude[hdr.geo_guc.srcGnAddr] = hdr.geo_guc.srcLatitude;
+                    location_longitude[hdr.geo_guc.srcGnAddr] = hdr.geo_guc.srcLongitude;
+                    location_timestamp[hdr.geo_guc.srcGnAddr] = hdr.geo_guc.srcTimestamp;
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 3: GeoAreaCheck - 地理区域检查
+// 判断是否在目标地理区域内
+// ============================================================
+module GeoAreaCheck() {
+    control {
+        if (meta.geo_metadata.is_geo == 1 && 
+            meta.geo_metadata.packet_type == GEO_GEOBROADCAST) {
+            
+            if (hdr.geo_gbc.isValid()) {
+                // 简化的区域检查：计算当前位置与目标区域中心的距离
+                bit<32> lat_diff;
+                bit<32> lon_diff;
+                bit<32> distance_squared;
+                
+                // 计算纬度差的绝对值（简化版）
+                if (meta.geo_metadata.my_latitude > hdr.geo_gbc.geoAreaLatitude) {
+                    lat_diff = meta.geo_metadata.my_latitude - hdr.geo_gbc.geoAreaLatitude;
+                } else {
+                    lat_diff = hdr.geo_gbc.geoAreaLatitude - meta.geo_metadata.my_latitude;
+                }
+                
+                // 计算经度差的绝对值
+                if (meta.geo_metadata.my_longitude > hdr.geo_gbc.geoAreaLongitude) {
+                    lon_diff = meta.geo_metadata.my_longitude - hdr.geo_gbc.geoAreaLongitude;
+                } else {
+                    lon_diff = hdr.geo_gbc.geoAreaLongitude - meta.geo_metadata.my_longitude;
+                }
+                
+                // 简化的距离计算（实际应使用更精确的公式）
+                distance_squared = (lat_diff >> 16) + (lon_diff >> 16);
+                meta.geo_metadata.distance_to_dest = distance_squared;
+                
+                // 检查是否在区域内（简化版：比较距离与半径）
+                if (distance_squared < (bit<32>)hdr.geo_gbc.distanceA) {
+                    meta.geo_metadata.in_target_area = 1;
+                } else {
+                    meta.geo_metadata.in_target_area = 0;
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 4: GreedyForwarding - 贪婪转发
+// 基于地理位置的贪婪转发算法
+// ============================================================
+module GreedyForwarding() {
+    control {
+        // 邻居表：端口 -> (Latitude, Longitude)
+        // 配置每个端口连接的邻居位置
+        map<bit<9>, bit<32>>[32] neighbor_latitude {
+            (1, 0x1E8B4568);  // port 1 邻居纬度
+            (2, 0x1E8B4569);  // port 2 邻居纬度
+            (3, 0x1E8B456A);  // port 3 邻居纬度
+        };
+        
+        map<bit<9>, bit<32>>[32] neighbor_longitude {
+            (1, 0x327B23C7);
+            (2, 0x327B23C8);
+            (3, 0x327B23C9);
+        };
+        
+        if (meta.geo_metadata.is_geo == 1 && 
+            meta.geo_metadata.need_forward == 1) {
+            
+            // GeoBroadcast 转发策略
+            if (meta.geo_metadata.packet_type == GEO_GEOBROADCAST) {
+                if (hdr.geo_gbc.isValid()) {
+                    // 如果在目标区域内，广播到所有端口（除了入端口）
+                    if (meta.geo_metadata.in_target_area == 1) {
+                        // 这里简化处理，选择一个端口
+                        // 实际应该复制到多个端口
+                        pkt.out_port = 255;  // 广播标志
+                    } else {
+                        // 不在区域内，使用贪婪转发到最接近目标的邻居
+                        // 简化版：选择第一个配置的端口
+                        bit<9> best_port = 1;
+                        bit<32> min_distance = 0xFFFFFFFF;
+                        
+                        // 遍历邻居，找到最接近目标的
+                        if (1 in neighbor_latitude) {
+                            bit<32> nb_lat = neighbor_latitude[1];
+                            bit<32> nb_lon = neighbor_longitude[1];
+                            bit<32> dist = calculate_distance(
+                                nb_lat, nb_lon,
+                                hdr.geo_gbc.geoAreaLatitude,
+                                hdr.geo_gbc.geoAreaLongitude
+                            );
+                            if (dist < min_distance) {
+                                min_distance = dist;
+                                best_port = 1;
+                            }
+                        }
+                        
+                        pkt.out_port = best_port;
+                        meta.geo_metadata.best_next_hop = best_port;
+                    }
+                }
+            }
+            
+            // GeoUnicast 转发策略
+            else if (meta.geo_metadata.packet_type == GEO_GEOUNICAST) {
+                if (hdr.geo_guc.isValid()) {
+                    // 检查是否是目标节点
+                    // 这里需要与本节点的 GN_ADDR 比较（简化处理）
+                    
+                    // 贪婪转发到最接近目标位置的邻居
+                    pkt.out_port = 1;  // 简化：选择端口1
+                }
+            }
+        }
+    }
+    
+    // 辅助函数：计算两点之间的距离（简化版）
+    function bit<32> calculate_distance(
+        bit<32> lat1, bit<32> lon1,
+        bit<32> lat2, bit<32> lon2
+    ) {
+        bit<32> lat_diff;
+        bit<32> lon_diff;
+        
+        if (lat1 > lat2) {
+            lat_diff = lat1 - lat2;
+        } else {
+            lat_diff = lat2 - lat1;
+        }
+        
+        if (lon1 > lon2) {
+            lon_diff = lon1 - lon2;
+        } else {
+            lon_diff = lon2 - lon1;
+        }
+        
+        return (lat_diff >> 16) + (lon_diff >> 16);
+    }
+}
+
+// ============================================================
+// 模块 5: SequenceNumberCheck - 序列号检查
+// 防止数据包重复接收
+// ============================================================
+module SequenceNumberCheck() {
+    control {
+        // 序列号缓存：(GN_ADDR, SeqNum) -> 已接收标志
+        static map<bit<64>, bit<16>>[512] received_seqnum;
+        
+        if (meta.geo_metadata.is_geo == 1) {
+            if (meta.geo_metadata.packet_type == GEO_GEOBROADCAST) {
+                if (hdr.geo_gbc.isValid()) {
+                    // 检查是否已接收过此序列号的包
+                    if (hdr.geo_gbc.srcGnAddr in received_seqnum) {
+                        if (received_seqnum[hdr.geo_gbc.srcGnAddr] == hdr.geo_gbc.sequenceNumber) {
+                            // 重复包，丢弃
+                            drop();
+                        } else {
+                            // 更新序列号
+                            received_seqnum[hdr.geo_gbc.srcGnAddr] = hdr.geo_gbc.sequenceNumber;
+                        }
+                    } else {
+                        // 记录新的序列号
+                        received_seqnum[hdr.geo_gbc.srcGnAddr] = hdr.geo_gbc.sequenceNumber;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 模块 6: GeoStatistics - 统计信息
+// ============================================================
+module GeoStatistics() {
+    control {
+        static bit<64> beacon_counter[1];
+        static bit<64> gbc_counter[1];
+        static bit<64> guc_counter[1];
+        static bit<64> packets_in_area[1];
+        static bit<64> packets_forwarded[1];
+        
+        if (meta.geo_metadata.is_geo == 1) {
+            if (meta.geo_metadata.packet_type == GEO_BEACON) {
+                beacon_counter[0] = beacon_counter[0] + 1;
+            } else if (meta.geo_metadata.packet_type == GEO_GEOBROADCAST) {
+                gbc_counter[0] = gbc_counter[0] + 1;
+                
+                if (meta.geo_metadata.in_target_area == 1) {
+                    packets_in_area[0] = packets_in_area[0] + 1;
+                }
+                
+                if (meta.geo_metadata.need_forward == 1) {
+                    packets_forwarded[0] = packets_forwarded[0] + 1;
+                }
+            } else if (meta.geo_metadata.packet_type == GEO_GEOUNICAST) {
+                guc_counter[0] = guc_counter[0] + 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// 应用: GeoRouter - 组合所有模块实现完整的 GeoNetworking 路由器
+// ============================================================
+application GeoRouter using Parser {
+    // 1. 解析 GeoNetworking 数据包
+    GeoParser.apply();
+    
+    // 2. 序列号检查（防重复）
+    SequenceNumberCheck.apply();
+    
+    // 3. 更新位置表
+    LocationTable.apply();
+    
+    // 4. 检查是否在目标地理区域内
+    GeoAreaCheck.apply();
+    
+    // 5. 执行地理转发
+    GreedyForwarding.apply();
+    
+    // 6. 收集统计信息
+    GeoStatistics.apply();
+}
+

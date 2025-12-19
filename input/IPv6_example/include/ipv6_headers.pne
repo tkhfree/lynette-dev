@@ -1,0 +1,159 @@
+// ============================================================
+// IPv6 协议头部定义
+// 基于 RFC 8200 标准
+// ============================================================
+
+// 类型定义
+typedef bit<9>   port_num_t;
+typedef bit<48>  mac_addr_t;
+typedef bit<128> ipv6_addr_t;
+
+// 以太网类型
+const bit<16> ETHERTYPE_IPV6 = 0x86DD;
+
+// IPv6 下一头部类型
+const bit<8> IPV6_NEXT_HOP_BY_HOP    = 0;
+const bit<8> IPV6_NEXT_ICMPV6        = 58;
+const bit<8> IPV6_NEXT_TCP           = 6;
+const bit<8> IPV6_NEXT_UDP           = 17;
+const bit<8> IPV6_NEXT_ROUTING       = 43;
+const bit<8> IPV6_NEXT_FRAGMENT      = 44;
+const bit<8> IPV6_NEXT_NO_NEXT_HDR   = 59;
+
+// ICMPv6 类型
+const bit<8> ICMPV6_ECHO_REQUEST     = 128;
+const bit<8> ICMPV6_ECHO_REPLY       = 129;
+const bit<8> ICMPV6_ROUTER_SOLICIT   = 133;
+const bit<8> ICMPV6_ROUTER_ADVERT    = 134;
+const bit<8> ICMPV6_NEIGHBOR_SOLICIT = 135;
+const bit<8> ICMPV6_NEIGHBOR_ADVERT  = 136;
+
+// ============================================================
+// 以太网头部
+// ============================================================
+header ethernet_t {
+    mac_addr_t dstAddr;
+    mac_addr_t srcAddr;
+    bit<16>    etherType;
+}
+
+// ============================================================
+// IPv6 基本头部（RFC 8200）
+// ============================================================
+header ipv6_t {
+    bit<4>       version;        // 版本号（6）
+    bit<8>       trafficClass;   // 流量类别
+    bit<20>      flowLabel;      // 流标签
+    bit<16>      payloadLen;     // 载荷长度
+    bit<8>       nextHeader;     // 下一个头部
+    bit<8>       hopLimit;       // 跳数限制
+    ipv6_addr_t  srcAddr;        // 源 IPv6 地址（128位）
+    ipv6_addr_t  dstAddr;        // 目标 IPv6 地址（128位）
+}
+
+// ============================================================
+// ICMPv6 头部
+// ============================================================
+header icmpv6_t {
+    bit<8>  type;                // ICMPv6 类型
+    bit<8>  code;                // 代码
+    bit<16> checksum;            // 校验和
+    bit<32> reserved;            // 保留或特定字段
+}
+
+// ============================================================
+// 邻居发现协议 - 邻居请求（Neighbor Solicitation）
+// ============================================================
+header ipv6_nd_ns_t {
+    bit<8>  type;                // 135
+    bit<8>  code;                // 0
+    bit<16> checksum;
+    bit<32> reserved;
+    ipv6_addr_t targetAddr;      // 目标地址
+}
+
+// ============================================================
+// 邻居发现协议 - 邻居通告（Neighbor Advertisement）
+// ============================================================
+header ipv6_nd_na_t {
+    bit<8>  type;                // 136
+    bit<8>  code;                // 0
+    bit<16> checksum;
+    bit<1>  router;              // R 标志
+    bit<1>  solicited;           // S 标志
+    bit<1>  override;            // O 标志
+    bit<29> reserved;
+    ipv6_addr_t targetAddr;
+}
+
+// ============================================================
+// 邻居发现选项 - 链路层地址
+// ============================================================
+header ipv6_nd_option_t {
+    bit<8>  type;                // 1=源, 2=目标
+    bit<8>  length;              // 长度（8字节单位）
+    mac_addr_t linkLayerAddr;    // MAC 地址
+}
+
+// ============================================================
+// TCP 头部
+// ============================================================
+header tcp_t {
+    bit<16> srcPort;
+    bit<16> dstPort;
+    bit<32> seqNo;
+    bit<32> ackNo;
+    bit<4>  dataOffset;
+    bit<4>  res;
+    bit<8>  flags;
+    bit<16> window;
+    bit<16> checksum;
+    bit<16> urgentPtr;
+}
+
+// ============================================================
+// UDP 头部
+// ============================================================
+header udp_t {
+    bit<16> srcPort;
+    bit<16> dstPort;
+    bit<16> length;
+    bit<16> checksum;
+}
+
+// ============================================================
+// IPv6 扩展头部 - 逐跳选项（Hop-by-Hop Options）
+// ============================================================
+header ipv6_hop_by_hop_t {
+    bit<8>  nextHeader;
+    bit<8>  hdrExtLen;
+    bit<48> options;             // 简化，实际长度可变
+}
+
+// ============================================================
+// IPv6 扩展头部 - 路由头部（Routing Header）
+// ============================================================
+header ipv6_routing_t {
+    bit<8>  nextHeader;
+    bit<8>  hdrExtLen;
+    bit<8>  routingType;
+    bit<8>  segmentsLeft;
+    bit<32> reserved;
+}
+
+// ============================================================
+// IPv6 元数据（用于交换机内部处理）
+// ============================================================
+metadata ipv6_metadata_t {
+    bit<1>  is_ipv6;             // 是否为 IPv6 包
+    bit<8>  next_proto;          // 下一层协议
+    bit<1>  need_nd;             // 是否需要邻居发现
+    bit<1>  routing_hit;         // 路由表命中
+    bit<1>  local_delivery;      // 本地交付
+    bit<1>  is_multicast;        // 是否为组播
+    bit<128> next_hop_ipv6;      // 下一跳 IPv6
+    bit<48> next_hop_mac;        // 下一跳 MAC
+    bit<9>  egress_port;         // 出端口
+    bit<3>  traffic_class;       // 流量类别
+}
+

@@ -1,7 +1,7 @@
 from lark import Lark, Tree, Token
 import os,json
-from lynette_lib import data_structure
-from lynette_lib.grammar.grammar_define import grammar_define
+from lynette.lynette_lib import data_structure
+from lynette.lynette_lib.grammar.grammar_define import grammar_define
 
 class Generator():
     def __init__(self, **args):
