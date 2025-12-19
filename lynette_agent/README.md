@@ -109,12 +109,52 @@ print(status)
 
 启动服务后，访问 `http://localhost:8000/docs` 查看完整的API文档。
 
+## MCP服务支持
+
+Lynette Agent还支持Model Context Protocol (MCP)，可以将Lynette功能暴露给支持MCP的AI客户端（如Claude Desktop、Cursor等）。
+
+### 使用MCP服务
+
+1. **配置MCP服务器**
+
+   在支持MCP的客户端中配置（如Claude Desktop或Cursor）：
+   
+   ```json
+   {
+     "mcpServers": {
+       "lynette": {
+         "command": "python",
+         "args": ["-m", "lynette_agent.mcp_server"],
+         "env": {
+           "PYTHONPATH": "/path/to/lynette-dev/lynette-dev"
+         }
+       }
+     }
+   }
+   ```
+
+2. **测试MCP服务器**
+
+   ```bash
+   python -m lynette_agent.test_mcp
+   ```
+
+3. **在AI客户端中使用**
+
+   配置完成后，重启AI客户端，然后可以直接使用自然语言调用Lynette功能：
+   - "请编译input/Alice_main.pne文件"
+   - "分析一下这个PNE文件的结构"
+   - "部署P4代码到所有节点"
+
+详细使用说明请参考 [MCP_GUIDE.md](MCP_GUIDE.md)
+
 ## 注意事项
 
 1. 确保Lynette包已正确安装
 2. 确保输入文件路径正确
 3. 编译任务为异步执行，需要轮询查询状态
 4. API Key认证为简化实现，生产环境应使用更安全的认证方式
+5. MCP服务通过标准输入/输出通信，适用于支持MCP协议的客户端
 
 
 
